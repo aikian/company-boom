@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, targets } from '../src/game.ts';
+import { Game, targets, BONUS, BONUS_EVERY, BONUS_LIFE, BEAM_BONUS, RAGE_BREAK, RAGE_HIT, ROUND, multiplier } from '../src/game.ts';
 
-const slotOf = (game: Game, kind: number) => game.slots.findIndex(slot => slot.kind === kind && slot.hp > 0 && slot.cooldown === 0);
 const smash = (game: Game, index: number) => { let last = null; while (game.slots[index].hp > 0) last = game.hit(index); return last!; };
 const advance = (game: Game, seconds: number, step = .05) => { for (let t = 0; t < seconds - 1e-9; t += step) game.tick(Math.min(step, seconds - t)); };
+const live = (game: Game) => game.slots.map((slot, i) => slot.hp > 0 && slot.cooldown === 0 ? i : -1).filter(i => i >= 0);
+const chargeToFull = (game: Game) => { let guard = 0; while (game.rage < 100 && guard++ < 200) { for (const i of live(game)) game.hit(i); advance(game, .4); } };
 
 test('initial layout alternates the three target kinds and starts in ready', () => {
   const game = new Game();
@@ -12,33 +13,38 @@ test('initial layout alternates the three target kinds and starts in ready', () 
   assert.deepEqual(game.slots.map(slot => slot.kind), [0, 1, 2, 0, 1, 2]);
   assert.deepEqual(game.slots.map(slot => slot.hp), [1, 2, 3, 1, 2, 3]);
   assert.equal(game.hit(0), null, 'hits are ignored before start');
+  assert.equal(game.fire(), null, 'beam is ignored before start');
 });
 
-test('timer only runs after the first hit, then ends the round at 45 seconds', () => {
+test('timer only runs after the first hit, then ends the round at 15 seconds', () => {
   const game = new Game(); game.start();
   advance(game, 10);
-  assert.equal(game.elapsed, 0);
+  assert.equal(game.elapsed, 0); assert.equal(game.timeLeft, ROUND); assert.equal(ROUND, 15);
   assert.equal(game.phase, 'playing');
   game.hit(0);
-  advance(game, 44.9);
+  advance(game, ROUND - .1);
   assert.equal(game.phase, 'playing');
   advance(game, .2);
   assert.equal(game.phase, 'finale');
-  assert.equal(game.elapsed, 45);
+  assert.equal(game.elapsed, ROUND);
 });
 
-test('README example: two meetings and one printer with four hits totals 850 after timeout', () => {
+test('README example: two meetings and one printer with four hits, then timeout', () => {
   const game = new Game(); game.start();
   smash(game, 0); smash(game, 3); smash(game, 1);
   assert.equal(game.score, 200 + 250);
-  assert.equal(game.rage, 4 * 2 + 3 * 4);
+  assert.equal(game.rage, 4 * RAGE_HIT + 3 * RAGE_BREAK);
   assert.equal(game.destroyed, 3);
-  advance(game, 46);
+  advance(game, ROUND + 1);
   assert.equal(game.phase, 'finale');
-  assert.equal(game.score, 850);
+  assert.equal(game.score, 450 + (4 * RAGE_HIT + 3 * RAGE_BREAK) * 20);
 });
 
-test('combo multiplier steps at 5 and 10 and resets after 1.2 seconds of silence', () => {
+test('multiplier bands: x1 to 4, x1.5 at 5, x2 at 10, x3 at 20', () => {
+  assert.deepEqual([1, 4, 5, 9, 10, 19, 20, 99].map(multiplier), [1, 1, 1.5, 1.5, 2, 2, 3, 3]);
+});
+
+test('combo multiplier applies to the breaking hit and resets after 1.2 seconds of silence', () => {
   const game = new Game(); game.start();
   const step = (index: number, combo: number, score: number) => { assert.ok(game.hit(index), `hit on slot ${index}`); assert.equal(game.combo, combo); assert.equal(game.score, score); advance(game, .4); };
   step(1, 1, 0); step(4, 2, 0); step(2, 3, 0); step(5, 4, 0);   // printers and desks absorb hits without breaking
@@ -48,8 +54,9 @@ test('combo multiplier steps at 5 and 10 and resets after 1.2 seconds of silence
   step(0, 9, 300);                                             // slot 0 respawned as a printer
   step(1, 10, 800);                                            // printer breaks at combo 10 => 250 x 2
   assert.equal(game.maxCombo, 10);
+  assert.ok(game.comboLeft > 0 && game.comboLeft < 1.2);
   advance(game, 1.3);
-  assert.equal(game.combo, 0, 'combo display resets after 1.2s');
+  assert.equal(game.combo, 0, 'combo display resets after 1.2s'); assert.equal(game.comboLeft, 0);
   step(4, 1, 1050);                                            // restart at 1 => 250 x 1
   assert.equal(game.maxCombo, 10);
 });
@@ -69,30 +76,58 @@ test('destroyed slot ignores input during cooldown and respawns as the next kind
   assert.equal(game.hit(0)?.broken, false);
 });
 
-test('rage caps at 100 and unlocks the manual finale exactly once', () => {
+test('every 7th destruction queues a golden target that expires after 4 seconds', () => {
   const game = new Game(); game.start();
-  assert.equal(game.finish(), false, 'cannot fire below 100');
-  let guard = 0;
-  while (game.rage < 100 && guard++ < 200) { for (let i = 0; i < 6; i++) if (game.slots[i].hp > 0 && game.slots[i].cooldown === 0) game.hit(i); advance(game, .4); }
-  assert.equal(game.rage, 100);
-  const before = game.score;
-  assert.equal(game.finish(), true);
-  assert.equal(game.phase, 'finale');
-  assert.equal(game.score, before + 2000);
-  assert.equal(game.finish(), false, 'second fire is ignored');
-  assert.equal(game.finish(true), false, 'timeout after fire is ignored');
-  assert.equal(game.hit(0), null, 'input locked during finale');
-  assert.equal(game.score, before + 2000);
-  advance(game, 4.1);
-  assert.equal(game.phase, 'result');
+  for (let n = 0; n < BONUS_EVERY; n++) { smash(game, live(game)[0]); advance(game, .4); }
+  assert.equal(game.destroyed, BONUS_EVERY);
+  const golden = game.slots.findIndex(slot => slot.kind === BONUS);
+  assert.ok(golden >= 0, 'a golden target spawned in the slot that respawned after the 7th break');
+  assert.equal(game.slots[golden].hp, 2); assert.equal(game.slots[golden].expires, BONUS_LIFE);
+  assert.equal(game.bonusPending, false);
+  advance(game, BONUS_LIFE + .1);
+  assert.notEqual(game.slots[golden].kind, BONUS, 'golden target vanished unclaimed');
+  assert.equal(game.slots[golden].hp, targets[game.slots[golden].kind].hp, 'slot returned to its normal cycle at full health');
+  // Claim one this time: it is worth 800 x multiplier and does not spawn another golden target.
+  for (let n = 0; n < BONUS_EVERY; n++) { smash(game, live(game).find(i => game.slots[i].kind !== BONUS)!); advance(game, .4); }
+  const again = game.slots.findIndex(slot => slot.kind === BONUS);
+  assert.ok(again >= 0);
+  advance(game, 1.5); const before = game.score; const combo = game.combo;
+  const event = smash(game, again);
+  assert.equal(event.kind, BONUS); assert.equal(event.points, 800 * multiplier(combo + 2));
+  assert.equal(game.score, before + event.points);
+  assert.equal(game.slots[again].expires, 0);
 });
 
-test('timeout below 100 rage still reaches the finale with proportional bonus', () => {
+test('rage caps at 100, the beam clears every live target with a bonus and play continues', () => {
+  const game = new Game(); game.start();
+  assert.equal(game.fire(), null, 'cannot fire below 100');
+  chargeToFull(game);
+  assert.equal(game.rage, 100); assert.equal(game.phase, 'playing');
+  advance(game, .5); // let cooldowns clear so all six are live
+  const liveNow = live(game); const combo = game.combo; const before = game.score; const destroyed = game.destroyed;
+  const expected = BEAM_BONUS + liveNow.reduce((sum, i) => sum + targets[game.slots[i].kind].points * multiplier(combo), 0);
+  const strike = game.fire();
+  assert.deepEqual(strike?.cleared, liveNow);
+  assert.equal(strike?.gained, expected);
+  assert.equal(game.score, before + expected);
+  assert.equal(game.rage, 0); assert.equal(game.beams, 1); assert.equal(game.destroyed, destroyed + liveNow.length);
+  assert.equal(game.phase, 'playing', 'the round keeps going');
+  assert.equal(game.fire(), null, 'second fire needs a full gauge again');
+  assert.ok(game.slots.every(slot => slot.hp === 0 && slot.cooldown === .5));
+  advance(game, .6);
+  assert.ok(game.slots.every(slot => slot.hp > 0), 'targets respawned after the beam');
+});
+
+test('timeout ends the round exactly once with the remaining rage as bonus', () => {
   const game = new Game(); game.start();
   game.hit(0);
-  advance(game, 46);
+  advance(game, ROUND + 1);
   assert.equal(game.phase, 'finale');
-  assert.equal(game.score, 100 + 6 * 20);
+  assert.equal(game.score, 100 + (RAGE_HIT + RAGE_BREAK) * 20);
+  assert.equal(game.finish(), false, 'finishing again is ignored');
+  assert.equal(game.hit(0), null, 'input locked during finale'); assert.equal(game.fire(), null);
+  advance(game, 4.1);
+  assert.equal(game.phase, 'result');
 });
 
 test('pause freezes the timer and resume continues it', () => {
@@ -107,15 +142,15 @@ test('pause freezes the timer and resume continues it', () => {
 });
 
 test('reset returns to a fresh round and ignores bad delta times', () => {
-  const game = new Game(); game.start(); smash(game, 2);
+  const game = new Game(); game.start(); smash(game, 2); chargeToFull(game); game.fire();
   game.reset();
-  assert.equal(game.phase, 'ready'); assert.equal(game.score, 0); assert.equal(game.rage, 0); assert.equal(game.destroyed, 0);
+  assert.equal(game.phase, 'ready'); assert.equal(game.score, 0); assert.equal(game.rage, 0); assert.equal(game.destroyed, 0); assert.equal(game.beams, 0); assert.equal(game.bonusPending, false);
   game.start(); game.hit(0); game.tick(NaN); game.tick(-1); game.tick(Infinity);
   assert.equal(game.elapsed, 0);
 });
 
 test('rank thresholds follow the plan', () => {
   const game = new Game();
-  for (const [score, rank] of [[0, '오늘도 참은 사람'], [2999, '오늘도 참은 사람'], [3000, '회의실의 재앙'], [6000, '정시 퇴근 수호자'], [10000, '전설의 퇴사자']] as const) { game.score = score; assert.equal(game.rank, rank); }
-  assert.equal(targets.length, 3);
+  for (const [score, rank] of [[0, '오늘도 참은 사람'], [4999, '오늘도 참은 사람'], [5000, '회의실의 재앙'], [12000, '정시 퇴근 수호자'], [22000, '전설의 퇴사자']] as const) { game.score = score; assert.equal(game.rank, rank); }
+  assert.equal(targets.length, 4);
 });

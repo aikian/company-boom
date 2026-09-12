@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Game, targets } from './game';
+import { BONUS, Game, targets } from './game';
 
 type Piece = { position: THREE.Vector3; velocity: THREE.Vector3; rotation: THREE.Euler; spin: THREE.Vector3; dims: THREE.Vector3; life: number; paper: boolean };
 type Flash = { sprite: THREE.Sprite; life: number; maxLife: number; size: number };
@@ -35,7 +35,7 @@ export class OfficeScene {
   rings: Ring[] = [];
   targetKinds = [-1, -1, -1, -1, -1, -1];
   kicks = [0, 0, 0, 0, 0, 0];
-  clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0;
+  clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0; beamLife = 0;
   onEvent?: (event: SceneEvent) => void;
   private probeFrames = 0; private probeTime = 0;
   private dummy = new THREE.Object3D();
@@ -200,6 +200,14 @@ export class OfficeScene {
       this.box(group, [.86, .09, .08], [0, .37, .46], 0x35434d);
       this.box(group, [.66, .025, .45], [0, .33, .62], 0xfff0cd);
       this.box(group, [.18, .04, .13], [.48, .87, .24], 0xd7ff7d);
+    } else if (kind === BONUS) {
+      // Golden "urgent request": a gilded tray piled with red-flagged papers and a desk bell.
+      this.box(group, [1.5, .1, .95], [0, .6, 0], 0xe0b23a);
+      for (const x of [-.55, .55]) this.box(group, [.12, .5, .7], [x, .3, 0], 0x8a6d1f);
+      for (let i = 0; i < 6; i++) this.box(group, [.7, .045, .5], [-.1 + i * .03, .69 + i * .05, .02], i % 2 ? 0xfff4d6 : 0xff665a);
+      this.box(group, [.2, .12, .2], [.5, .72, -.25], 0xffd84d);
+      this.box(group, [.3, .05, .3], [.5, .64, -.25], 0xe0b23a);
+      this.box(group, [.06, .18, .06], [.5, .86, -.25], 0xffe9a3);
     } else {
       this.box(group, [1.9, .12, 1.04], [0, .64, 0], 0x7fa99a);
       for (const x of [-.76, .76]) this.box(group, [.1, .59, .82], [x, .31, 0], 0x465457);
@@ -214,7 +222,7 @@ export class OfficeScene {
   }
   reset() {
     this.stage = 0; this.pieces.length = 0; this.stamp.visible = false; this.beam.visible = false; this.point.intensity = 0;
-    this.shake = this.hitstop = this.damage = 0; this.building.visible = true; this.building.rotation.set(0, 0, 0);
+    this.shake = this.hitstop = this.damage = this.beamLife = 0; this.building.visible = true; this.building.rotation.set(0, 0, 0);
     this.building.traverse(object => { object.visible = true; });
     for (const window of this.windows) { window.material = this.mat(WINDOW); window.rotation.set(0, 0, 0); }
     for (const prop of this.props) prop.rotation.z = prop.userData.rz;
@@ -294,6 +302,19 @@ export class OfficeScene {
       if (!this.reduced) this.shake += .3;
     }
   }
+  // Mid-round exit beam: a short vertical blast that shatters every live target at once.
+  strike(indices: number[]) {
+    for (const index of indices) {
+      const group = this.targetGroups[index]; const color = targets[Math.max(0, this.targetKinds[index])].color;
+      const origin = group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .6, .5));
+      this.shatter(group, 1.6); this.sparks(origin, this.reduced ? 4 : 12, color, 1.5); this.papers(origin, this.reduced ? 2 : 6);
+      this.flash(origin, 2.4, color, .2); this.shockwave(origin, color); this.kicks[index] = 1;
+    }
+    this.flash(new THREE.Vector3(0, 3.2, 1), 7, 0xd5c8ff, .35); this.shockwave(new THREE.Vector3(0, .2, 0), 0xd5fc71);
+    this.point.intensity = 40; this.point.color.set(0xd5fc71); this.wreck(); this.wreck();
+    if (!this.reduced) { this.shake += 1.4; this.hitstop = .07; }
+    this.beamLife = .55; this.beam.scale.x = this.beam.scale.z = .75;
+  }
   resize() {
     this.size.w = this.container.clientWidth; this.size.h = this.container.clientHeight;
     this.camera.aspect = this.size.w / Math.max(this.size.h, 1);
@@ -316,6 +337,7 @@ export class OfficeScene {
       this.kicks[i] *= Math.exp(-motionDt * 13);
       group.scale.set(1 + this.kicks[i] * .16, 1 - this.kicks[i] * .24, 1 + this.kicks[i] * .12);
       group.rotation.z = Math.sin(this.clock * 60) * this.kicks[i] * .09;
+      group.position.y = slot.kind === BONUS && slot.hp > 0 && !this.reduced ? .18 + Math.abs(Math.sin(this.clock * 5)) * .12 : .18;
       group.getWorldPosition(this.project); this.project.y += .35; this.project.z += .9; this.project.project(this.camera);
       anchors[i].style.left = `${(this.project.x * .5 + .5) * this.size.w}px`;
       anchors[i].style.top = `${(-this.project.y * .5 + .5) * this.size.h}px`;
@@ -323,18 +345,18 @@ export class OfficeScene {
     const finale = game.phase === 'finale' || game.phase === 'result';
     let distance = 1;
     if (finale) {
-      const t = game.finaleTime;
+      const t = game.finaleTime; const power = game.beams > 0 ? 100 : game.rage;
       distance = this.reduced ? 1 : t < .9 ? 1 - .08 * Math.min(t / .6, 1) : 1 + Math.min((t - .9) / 2, 1) * .14;
       this.beam.visible = t > .6 && t < 2.4;
       const material = this.beam.material as THREE.ShaderMaterial; material.uniforms.time.value = this.clock;
       material.uniforms.opacity.value = Math.min(1, Math.max(0, (2.4 - t) / .7));
-      this.beam.scale.x = this.beam.scale.z = .3 + game.rage / 100;
+      this.beam.scale.x = this.beam.scale.z = .3 + power / 100;
       this.point.intensity = t < .9 ? t * 30 : Math.max(0, 30 - t * 8);
       // The beam strips the building top-down: roof, three floors, then the base and everything left.
-      const stages = game.rage >= 100 ? 5 : Math.max(1, Math.round(game.rage / 25));
+      const stages = power >= 100 ? 5 : Math.max(1, Math.round(power / 25));
       const order = [this.floors[3], this.floors[2], this.floors[1], this.floors[0], this.building];
       while (this.stage < stages && t >= .9 + this.stage * .14) {
-        const center = this.shatter(order[this.stage], 1.5 + game.rage / 100); order[this.stage].visible = false;
+        const center = this.shatter(order[this.stage], 1.5 + power / 100); order[this.stage].visible = false;
         this.sparks(center, this.reduced ? 4 : 24, 0xd5fc71, 2); this.papers(center, this.reduced ? 4 : 18);
         this.flash(center, 5, 0xe0c8ff, .3); this.shockwave(center, 0xb8a4ff);
         if (!this.reduced) this.shake += .8;
@@ -345,6 +367,8 @@ export class OfficeScene {
       this.stamp.visible = t > 2.7; this.stamp.scale.setScalar(Math.min(1, Math.max(0, (t - 2.7) * 2.5)));
       this.stamp.rotation.y = this.reduced ? 0 : this.clock * .25;
     } else {
+      this.beamLife -= dt; this.beam.visible = this.beamLife > 0;
+      if (this.beam.visible) { const material = this.beam.material as THREE.ShaderMaterial; material.uniforms.time.value = this.clock; material.uniforms.opacity.value = Math.min(1, this.beamLife / .35); }
       this.point.intensity *= Math.exp(-motionDt * 8);
       this.building.rotation.y = game.phase === 'ready' && !this.reduced ? Math.sin(this.clock * .35) * .025 : 0;
       this.sign.rotation.z = this.reduced ? 0 : Math.sin(this.clock * 2.2) * Math.min(this.damage * .006, .05) - Math.min(this.damage * .005, .08);

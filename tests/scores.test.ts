@@ -16,7 +16,8 @@ test('validate rejects impossible or malformed scores', () => {
   assert.equal(validate(null), null);
   const ok = validate({ name: 'a', score: 850, combo: 4, destroyed: 3, rank: 'nope' });
   assert.equal(ok?.rank, '오늘도 참은 사람');
-  assert.equal(validate({ score: 12000 })?.rank, '전설의 퇴사자');
+  assert.equal(validate({ score: 6000 })?.rank, '회의실의 재앙');
+  assert.equal(validate({ score: 40000 })?.rank, '전설의 퇴사자');
 });
 
 test('insert keeps the list sorted, reports the position and caps the size', () => {

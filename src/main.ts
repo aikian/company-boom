@@ -1,5 +1,5 @@
 import './style.css';
-import { Game, targets } from './game';
+import { BONUS, Game, ROUND, targets } from './game';
 import { OfficeScene } from './scene';
 import { Sound } from './audio';
 import { readStore, setupPwa, writeStore } from './pwa';
@@ -26,20 +26,28 @@ document.querySelector('#app')!.innerHTML = `
 </header>
 <main class="shell">
   <section class="intro" id="intro">
-    <div class="eyebrow"><span></span> 45초 스트레스 해소</div>
+    <div class="eyebrow"><span></span> 15초 스트레스 해소</div>
     <h1>회사를<br><em>터뜨려라.</em><span class="title-star">✳</span></h1>
-    <p class="lead">부수고, 날리고, 퇴근.<br>오늘 쌓인 거, 여기서 다 털어요.</p>
+    <p class="lead">딱 15초. 부수고, 날리고, 퇴근.<br>오늘 쌓인 거, 여기서 다 털어요.</p>
     <form class="enter" id="enter"><label class="visually-hidden" for="player-name">닉네임</label><input id="player-name" maxlength="12" placeholder="닉네임 입력 (랭킹에 올라가요)" autocomplete="nickname" enterkeyhint="go"><button id="start" class="primary start-button" type="submit" disabled><span id="start-label">사무실 준비 중…</span>${icon('arrow')}</button></form>
     <div class="start-note"><span>가입 없이 바로</span><i>·</i><span>모바일 & PC</span><i>·</i><span>소리 켜고 하세요 🔊</span></div>
+    <details class="rules"><summary>게임 규칙 보기</summary><ul>
+      <li><b>15초</b> — 첫 타격부터 시작. 끝나면 건물이 무너져요. 쉬지 말고 두드리세요.</li>
+      <li><b>탭 = 1대</b> — 회의 자료 1대 100점 · 프린터 2대 250점 · 야근 책상 3대 450점.</li>
+      <li><b>콤보</b> — 1.2초 안에 계속 치면 유지. 5콤보 ×1.5 · 10콤보 ×2 · 20콤보 ×3.</li>
+      <li><b>퇴사빔</b> — 분노 100%면 발사! 화면의 모든 표적을 한 번에 부수고 <b>+1,000</b>. 콤보 높을 때 쏘면 더 커요. 게임은 계속.</li>
+      <li><b>긴급 수정 요청</b> — 7개 부술 때마다 황금 표적 등장. 4초 안에 부수면 <b>800점</b>.</li>
+      <li><b>종료 보너스</b> — 남은 분노 × 20점.</li>
+    </ul></details>
   </section>
   <section class="arena" id="arena" aria-label="게임 플레이 영역">
     <div class="arena-grid"></div><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
     <div class="scene-top"><div><span class="live-dot"></span><span id="scene-label">오늘의 철거 대상</span></div><span class="edition">OFFICE / 001</span></div>
-    <div class="hud" id="hud" hidden><div><small>남은 시간</small><strong id="timer">45<span>s</span></strong></div><div class="hud-score"><small>SCORE</small><strong id="score">0</strong></div><button id="pause" class="icon-button" aria-label="일시정지">${icon('pause')}</button></div>
+    <div class="hud" id="hud" hidden><div><small>남은 시간</small><strong id="timer">15<span>s</span></strong></div><div class="hud-score"><small>SCORE</small><strong id="score">0</strong></div><button id="pause" class="icon-button" aria-label="일시정지">${icon('pause')}</button></div>
     <div id="scene" class="scene"><div id="loading" class="loading"><span></span>당신의 회사를 준비하고 있어요</div><div class="target-layer" id="target-layer"></div></div>
-    <div id="combo" class="combo" hidden><strong>0</strong><span>COMBO</span></div>
+    <div id="combo" class="combo" hidden><strong>0</strong><span>COMBO</span><i class="combo-bar"><b id="combo-bar"></b></i></div>
     <div class="scene-caption" id="scene-caption"><span class="mini-tag">100% 가상 회사</span><p>주식회사 내일부터</p><small>업무는 무한. 당신의 인내심은 유한.</small></div>
-    <div id="play-bottom" class="play-bottom" hidden><p id="quip">사무용품을 터치하면 45초가 시작돼요.</p><div class="rage-label"><span>${icon('bolt')} 분노 게이지</span><strong id="rage-value">0%</strong></div><div class="rage-track"><div id="rage-fill"></div></div><button id="fire" class="primary fire-button" disabled>${icon('bolt')}<span>퇴사빔 충전 중</span><small>0 / 100</small></button></div>
+    <div id="play-bottom" class="play-bottom" hidden><p id="quip">사무용품을 터치하면 15초가 시작돼요.</p><div class="rage-label"><span>${icon('bolt')} 분노 게이지</span><strong id="rage-value">0%</strong></div><div class="rage-track"><div id="rage-fill"></div></div><button id="fire" class="primary fire-button" disabled>${icon('bolt')}<span>퇴사빔 충전 중</span><small>0 / 100</small></button></div>
     <div id="finale-caption" class="finale-caption" hidden><small>ULTIMATE RELEASE</small><h2>퇴사빔.</h2><p>업무 종료. 내 인생 시작.</p></div>
     <div id="pause-panel" class="pause-panel" hidden><span>Ⅱ</span><h2>잠깐 쉬어가요.</h2><p>스트레스도, 타이머도 멈췄어요.</p><button id="resume" class="primary">계속하기 ${icon('arrow')}</button><button id="quit" class="subtle">처음으로</button></div>
     <div id="scene-error" class="pause-panel" hidden><h2>3D 화면을 열 수 없어요.</h2><p>최신 Safari나 Chrome에서 다시 시도해 주세요.</p><button id="reload" class="primary">다시 불러오기</button></div>
@@ -48,7 +56,7 @@ document.querySelector('#app')!.innerHTML = `
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
 <dialog id="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">MAKE YOURSELF COMFORTABLE</div><h2>내 취향대로.</h2><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림과 파편 효과를 줄여요.</p><label class="setting-label">가상 회사 이름<input id="company-name" maxlength="16" value="주식회사 내일부터"></label><p class="muted">이름은 이 기기의 현재 화면에서만 사용해요.</p><button id="settings-save" class="primary">적용하기</button></dialog>
-<dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
+<dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-beams">0</b><span>퇴사빔</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 `;
 
@@ -56,7 +64,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const API = `${import.meta.env.BASE_URL}api/`;
 const game = new Game(); const sound = new Sound();
 sound.muted = readStore('boom-muted', 'no') === 'yes';
-let scene: OfficeScene | undefined; let lastPhase = game.phase; let lastTime = performance.now(); let boomPlayed = false; let rageReady = false;
+let scene: OfficeScene | undefined; let lastPhase = game.phase; let lastTime = performance.now(); let boomPlayed = false; let rageReady = false; let goldenShown = false;
 let best = Number(readStore('boom-best', '0')) || 0; let toastTimer: ReturnType<typeof setTimeout>; let captured = '';
 const notify = (text: string) => { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4200); };
 const buzz = (pattern: number | number[]) => { try { navigator.vibrate?.(pattern); } catch { /* Optional haptics. */ } };
@@ -89,16 +97,16 @@ async function submitScore() {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return (await response.json()) as { position: number; total: number; top: Entry[] };
 }
+function float(text: string, left: string, top: string, big = false) {
+  const points = document.createElement('span'); points.className = big ? 'floating-points big' : 'floating-points'; points.textContent = text;
+  points.style.left = left; points.style.top = top; $('target-layer').append(points); setTimeout(() => points.remove(), big ? 1300 : 850);
+}
 function hit(index: number) {
   if (document.querySelector('dialog[open]')) return;
   const event = game.hit(index); if (!event) return;
   sound.unlock(); sound.hit(event.kind, event.broken, game.combo); scene?.hit(index, event.broken, event.kind); buzz(event.broken ? [30, 20, 40] : 12);
   $('quip').textContent = event.broken ? targets[event.kind].quip : ['좋아요, 한 번 더!', '부숴! 부숴!', '아직 안 부서졌어요.', '거의 다 왔어요!'][Math.floor(Math.random() * 4)];
-  if (event.points) {
-    const points = document.createElement('span'); points.className = 'floating-points'; points.textContent = `+${event.points}`;
-    points.style.left = anchors[index].style.left; points.style.top = anchors[index].style.top;
-    $('target-layer').append(points); setTimeout(() => points.remove(), 850);
-  }
+  if (event.points) float(`+${event.points.toLocaleString()}`, anchors[index].style.left, anchors[index].style.top, event.kind === BONUS);
   const combo = $('combo'); combo.classList.remove('pop'); void combo.offsetWidth; combo.classList.add('pop');
   sync();
 }
@@ -108,27 +116,34 @@ function sync() {
   $('hud').hidden = !playing; $('play-bottom').hidden = !playing;
   $('scene-caption').hidden = game.phase !== 'ready'; $('scene-label').textContent = game.phase === 'ready' ? '오늘의 철거 대상' : 'STRESS RELEASE IN PROGRESS';
   $('pause-panel').hidden = game.phase !== 'paused'; $('finale-caption').hidden = game.phase !== 'finale';
-  $('timer').innerHTML = `${Math.ceil(45 - game.elapsed)}<span>s</span>`;
-  $('timer').classList.toggle('urgent', game.elapsed > 35);
+  $('timer').innerHTML = `${Math.ceil(game.timeLeft)}<span>s</span>`;
+  $('timer').classList.toggle('urgent', game.started && game.timeLeft <= 5);
   $('score').textContent = game.score.toLocaleString(); $('rage-value').textContent = `${game.rage}%`; $('rage-fill').style.width = `${game.rage}%`;
   const fire = $<HTMLButtonElement>('fire'); fire.disabled = game.rage < 100 || game.phase !== 'playing'; fire.classList.toggle('charged', game.rage === 100);
-  fire.querySelector('span')!.textContent = game.rage === 100 ? '퇴사빔 발사!' : '퇴사빔 충전 중'; fire.querySelector('small')!.textContent = `${game.rage} / 100`;
+  fire.querySelector('span')!.textContent = game.rage === 100 ? '퇴사빔 발사! 전부 부수기 +1,000' : `퇴사빔 충전 중${game.beams ? ` · ${game.beams}회 발사` : ''}`; fire.querySelector('small')!.textContent = `${game.rage} / 100`;
   $('combo').hidden = game.combo < 2 || game.phase !== 'playing'; $('combo').querySelector('strong')!.textContent = String(game.combo);
+  $('combo').classList.toggle('hot', game.combo >= 10); $('combo-bar').style.width = `${game.comboLeft / 1.2 * 100}%`;
   anchors.forEach((button, i) => {
-    const slot = game.slots[i]; button.hidden = game.phase !== 'playing' || slot.hp <= 0;
-    button.setAttribute('aria-label', `${i + 1}번 ${targets[slot.kind].name} · 체력 ${slot.hp}`); button.innerHTML = `<small>${'●'.repeat(Math.max(0, slot.hp))}</small>`;
+    const slot = game.slots[i]; button.hidden = game.phase !== 'playing' || slot.hp <= 0; button.classList.toggle('bonus', slot.kind === BONUS);
+    button.setAttribute('aria-label', `${i + 1}번 ${targets[slot.kind].name} · 체력 ${slot.hp}${slot.kind === BONUS ? ` · ${Math.ceil(slot.expires)}초 남음` : ''}`);
+    button.innerHTML = `<small>${'●'.repeat(Math.max(0, slot.hp))}</small>${slot.kind === BONUS ? `<em>${slot.expires.toFixed(1)}s</em>` : ''}`;
   });
 }
 function begin() {
   if (!scene) return;
   writeStore('boom-name', nameInput.value.trim());
-  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; captured = ''; sound.unlock(); sync();
-  $('quip').textContent = '사무용품을 터치하면 45초가 시작돼요.';
+  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; captured = ''; sound.unlock(); sync();
+  $('quip').textContent = `사무용품을 터치하면 ${ROUND}초가 시작돼요.`;
   $('arena').scrollIntoView({ behavior: 'instant', block: 'start' });
 }
 function home() { game.reset(); scene?.reset(); sync(); void loadRanking(); window.scrollTo({ top: 0, behavior: 'instant' }); }
 $('enter').addEventListener('submit', event => { event.preventDefault(); if (!$<HTMLButtonElement>('start').disabled) begin(); });
-$('fire').addEventListener('click', () => { if (game.finish()) { sound.charge(); buzz([60, 40, 60, 40, 120]); sync(); } });
+$('fire').addEventListener('click', () => {
+  const strike = game.fire(); if (!strike) return;
+  sound.unlock(); sound.zap(); scene?.strike(strike.cleared); buzz([60, 40, 60, 40, 120]);
+  float(`+${strike.gained.toLocaleString()}`, '50%', '38%', true); $('quip').textContent = `퇴사빔! 표적 ${strike.cleared.length}개를 한 번에 날렸어요.`;
+  rageReady = false; sync();
+});
 $('pause').addEventListener('click', () => { game.pause(); sync(); });
 $('resume').addEventListener('click', () => { lastTime = performance.now(); game.resume(); sound.unlock(); sync(); });
 $('quit').addEventListener('click', home);
@@ -147,7 +162,7 @@ function showResult() {
   const isBest = game.score > best; best = Math.max(best, game.score); writeStore('boom-best', String(best));
   $('result-greeting').textContent = `${playerName()}님, 오늘도 수고했어요. 이제 내 시간이에요.`;
   $('result-rank').textContent = game.rank; $('result-score').textContent = game.score.toLocaleString();
-  $('result-destroyed').textContent = String(game.destroyed); $('result-combo').textContent = String(game.maxCombo); $('result-best').textContent = best.toLocaleString();
+  $('result-destroyed').textContent = String(game.destroyed); $('result-combo').textContent = String(game.maxCombo); $('result-beams').textContent = String(game.beams); $('result-best').textContent = best.toLocaleString();
   $('new-record').hidden = !isBest; $('best-score').textContent = best.toLocaleString();
   $('result-position').textContent = '랭킹 등록 중…';
   try { captured = scene?.capture() || ''; } catch { captured = ''; }
@@ -179,7 +194,7 @@ $('save-card').addEventListener('click', async () => {
     if (captured) { const image = new Image(); image.src = captured; await image.decode(); const ratio = Math.min(1000 / image.width, 610 / image.height); const w = image.width * ratio; const h = image.height * ratio; ctx.drawImage(image, (1080 - w) / 2, 370, w, h); }
     else { ctx.fillStyle = '#d5fc71'; ctx.font = '220px sans-serif'; ctx.fillText('✳', 430, 680); }
     ctx.fillStyle = '#d5fc71'; ctx.font = '900 136px sans-serif'; ctx.fillText(game.score.toLocaleString(), 75, 1060);
-    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`부순 스트레스 ${game.destroyed}  ·  최대 콤보 ${game.maxCombo}`, 80, 1130);
+    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`부순 스트레스 ${game.destroyed}  ·  최대 콤보 ${game.maxCombo}  ·  퇴사빔 ${game.beams}회`, 80, 1130);
     ctx.fillStyle = '#f3f1e8'; ctx.font = 'bold 32px "Malgun Gothic", sans-serif'; ctx.fillText('오늘의 스트레스, 여기서 끝.', 75, 1260); ctx.font = '20px sans-serif'; ctx.fillText(location.host + import.meta.env.BASE_URL, 75, 1304);
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Image encoding failed')), 'image/png'));
     const file = new File([blob], 'company-boom.png', { type: 'image/png' });
@@ -203,7 +218,10 @@ function frame(now: number) {
   const dt = Math.max(0, (now - lastTime) / 1000); lastTime = now;
   if (!document.hidden) {
     game.tick(dt);
-    if (game.phase === 'playing' && game.rage === 100 && !rageReady) { rageReady = true; sound.charged(); buzz([20, 30, 20, 30, 60]); $('quip').textContent = '분노 폭발 직전! 퇴사빔을 쏘세요!'; }
+    if (game.phase === 'playing' && game.rage === 100 && !rageReady) { rageReady = true; sound.charged(); buzz([20, 30, 20, 30, 60]); $('quip').textContent = '분노 100%! 퇴사빔으로 전부 날려요!'; }
+    const golden = game.phase === 'playing' && game.slots.some(slot => slot.kind === BONUS && slot.hp > 0);
+    if (golden && !goldenShown) { sound.bonus(); buzz(25); $('quip').textContent = '⚡ 긴급 수정 요청 등장! 4초 안에 부수면 800점!'; }
+    goldenShown = golden;
     if (game.phase === 'finale' && lastPhase !== 'finale') { sound.charge(); $('finale-caption').querySelector('h2')!.textContent = game.rage >= 100 ? '퇴사빔.' : '오늘은 여기까지.'; }
     if (game.phase === 'finale' && game.finaleTime >= .9 && !boomPlayed) { sound.boom(); buzz([80, 30, 120]); boomPlayed = true; }
     scene?.update(dt, game, anchors);

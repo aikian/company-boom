@@ -1,6 +1,6 @@
 {
   "id": "/boomcompany/", "name": "회사 터뜨리기", "short_name": "회사 터뜨리기",
-  "description": "45초의 짜릿한 퇴근. 3D 직장인 스트레스 해소 게임.",
+  "description": "15초의 짜릿한 퇴근. 3D 직장인 스트레스 해소 게임.",
   "lang": "ko", "start_url": "/boomcompany/?source=pwa", "scope": "/boomcompany/",
   "display": "standalone", "background_color": "#14171c", "theme_color": "#14171c",
   "categories": ["games", "entertainment"],

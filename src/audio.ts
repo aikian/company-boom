@@ -78,5 +78,11 @@ export class Sound {
     this.tone(120, 28, .5, .9);
     for (let i = 0; i < 5; i++) this.tone(1200 + Math.random() * 2600, 500, .2, .1, 'triangle', .03 + i * .04);
   }
+  zap() {
+    this.tone(90, 1400, .28, .5, 'sawtooth'); this.noise(.3, .5, 'highpass', 400, 6000, .6);
+    this.tone(60, 18, 1.1, 1.1, 'sine', .25); this.noise(.9, 1, 'lowpass', 2600, 60, 1, .25); this.tone(300, 30, .5, .5, 'sawtooth', .25);
+    for (let i = 0; i < 8; i++) this.tone(1200 + Math.random() * 2800, 400, .2, .1, 'triangle', .3 + i * .04);
+  }
+  bonus() { for (const [i, f] of [1319, 1760, 2637].entries()) this.tone(f, f, .35, .16, 'triangle', i * .09); this.noise(.25, .15, 'highpass', 5000, 9000, .5); }
   celebrate() { for (const [i, f] of [523, 659, 784, 1047].entries()) this.tone(f, f, .45, .18, 'triangle', i * .13); this.noise(.5, .25, 'highpass', 3000, 8000, .5, .5); }
 }
