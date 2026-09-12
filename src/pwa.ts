@@ -6,7 +6,8 @@ export function installPlatform(userAgent: string, touchPoints: number) {
   if (/Android/i.test(userAgent)) return 'android';
   return 'desktop';
 }
-export function setupPwa(notify: (text: string) => void) {
+// onUpdate receives a function that swaps in the waiting service worker; the page reloads once it takes control.
+export function setupPwa(notify: (text: string) => void, onUpdate: (apply: () => void) => void) {
   let deferred: InstallEvent | null = null;
   const dialog = document.querySelector<HTMLDialogElement>('#install-dialog')!;
   const button = document.querySelector<HTMLButtonElement>('#install-action')!;
@@ -51,11 +52,20 @@ export function setupPwa(notify: (text: string) => void) {
   update();
   if (!standalone() && readStore('boom-installed') !== 'yes' && Date.now() - Number(readStore('boom-install-dismissed', '0')) > 7 * 86400000) open();
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
+    let refreshing = false; let requested = false;
+    // Only reload when we asked the waiting worker to take over; the very first activation must not bounce the page.
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (refreshing || !requested) return; refreshing = true; try { sessionStorage.setItem('boom-updated', '1'); } catch { /* optional */ } location.reload(); });
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(registration => {
-      const ready = () => notify('오프라인 준비 완료 · 다음에는 인터넷 없이도 플레이해요.');
-      if (registration.active) return;
-      const worker = registration.installing;
-      worker?.addEventListener('statechange', () => { if (worker.state === 'activated') ready(); });
+      const offer = (worker: ServiceWorker) => onUpdate(() => { requested = true; worker.postMessage('SKIP_WAITING'); });
+      const track = (worker: ServiceWorker) => worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') { if (navigator.serviceWorker.controller) offer(worker); else notify('오프라인 준비 완료 · 다음에는 인터넷 없이도 플레이해요.'); }
+      });
+      if (registration.waiting && navigator.serviceWorker.controller) offer(registration.waiting);
+      if (registration.installing) track(registration.installing);
+      registration.addEventListener('updatefound', () => { if (registration.installing) track(registration.installing); });
+      // Like a store app: look for a new build whenever the app comes back to the foreground, and every 30 minutes.
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) void registration.update().catch(() => {}); });
+      setInterval(() => void registration.update().catch(() => {}), 30 * 60 * 1000);
     }).catch(() => { notify('오프라인 저장을 사용할 수 없어요. 온라인으로 플레이할 수 있어요.'); });
   }
 }

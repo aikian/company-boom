@@ -35,7 +35,7 @@ export class OfficeScene {
   rings: Ring[] = [];
   targetKinds = [-1, -1, -1, -1, -1, -1];
   kicks = [0, 0, 0, 0, 0, 0];
-  clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0; beamLife = 0;
+  clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0; beamLife = 0; slow = 1; punch = 0;
   onEvent?: (event: SceneEvent) => void;
   private probeFrames = 0; private probeTime = 0;
   private dummy = new THREE.Object3D();
@@ -222,7 +222,7 @@ export class OfficeScene {
   }
   reset() {
     this.stage = 0; this.pieces.length = 0; this.stamp.visible = false; this.beam.visible = false; this.point.intensity = 0;
-    this.shake = this.hitstop = this.damage = this.beamLife = 0; this.building.visible = true; this.building.rotation.set(0, 0, 0);
+    this.shake = this.hitstop = this.damage = this.beamLife = this.punch = 0; this.slow = 1; this.building.visible = true; this.building.rotation.set(0, 0, 0);
     this.building.traverse(object => { object.visible = true; });
     for (const window of this.windows) { window.material = this.mat(WINDOW); window.rotation.set(0, 0, 0); }
     for (const prop of this.props) prop.rotation.z = prop.userData.rz;
@@ -241,6 +241,17 @@ export class OfficeScene {
     for (let i = 0; i < count; i++) {
       const size = .05 + Math.random() * .07;
       this.spawn(position, new THREE.Vector3(size, size, size), i % 3 === 0 ? 0xffffff : i % 3 === 1 ? 0xffd84d : color, new THREE.Vector3(rand(9), 2 + Math.random() * 6, rand(9) + 2).multiplyScalar(force), .45 + Math.random() * .5, false);
+    }
+  }
+  // Thin bright streaks shot outward read as speed lines around the impact.
+  private streaks(position: THREE.Vector3, count: number, color: number) {
+    const aim = new THREE.Object3D();
+    for (let i = 0; i < count; i++) {
+      const velocity = new THREE.Vector3(rand(2), rand(2) + .3, rand(2)).normalize().multiplyScalar(9 + Math.random() * 6);
+      aim.position.set(0, 0, 0); aim.lookAt(velocity);
+      if (this.pieces.length >= this.cap) return;
+      this.pieces.push({ position: position.clone(), velocity, rotation: aim.rotation.clone(), spin: new THREE.Vector3(), dims: new THREE.Vector3(.035, .035, .55 + Math.random() * .4), life: .22 + Math.random() * .12, paper: false });
+      this.particles.setColorAt(this.pieces.length - 1, new THREE.Color(i % 2 ? 0xffffff : color));
     }
   }
   private papers(position: THREE.Vector3, count: number) {
@@ -292,13 +303,13 @@ export class OfficeScene {
     if (broken) {
       this.shatter(group, 1.1);
       this.sparks(origin, few ? 6 : 16, color, 1.2); this.papers(origin, few ? 3 : kind === 0 ? 14 : 6);
-      this.flash(origin, 2.8, color, .2); this.shockwave(origin, color); this.wreck();
-      if (!this.reduced) { this.shake += .9; this.hitstop = .045; }
+      this.flash(origin, 2.8, color, .2); this.shockwave(origin, color); this.wreck(); this.streaks(origin, few ? 4 : 10, color);
+      if (!this.reduced) { this.shake += .9; this.hitstop = .045; this.punch += .05; }
     } else {
       // Knock a loose part off so damage is visible before the target finally breaks.
       const parts = group.children.filter((child, i) => i > 2 && child.visible) as THREE.Mesh[];
       if (parts.length) this.shatterMesh(parts[Math.floor(Math.random() * parts.length)], group.getWorldPosition(this.tmp.clone()), .8);
-      this.sparks(origin, few ? 3 : 7, color, .8); this.flash(origin, 1.4, color, .12);
+      this.sparks(origin, few ? 3 : 7, color, .8); this.flash(origin, 1.4, color, .12); this.streaks(origin, few ? 2 : 4, color);
       if (!this.reduced) this.shake += .3;
     }
   }
@@ -312,7 +323,8 @@ export class OfficeScene {
     }
     this.flash(new THREE.Vector3(0, 3.2, 1), 7, 0xd5c8ff, .35); this.shockwave(new THREE.Vector3(0, .2, 0), 0xd5fc71);
     this.point.intensity = 40; this.point.color.set(0xd5fc71); this.wreck(); this.wreck();
-    if (!this.reduced) { this.shake += 1.4; this.hitstop = .07; }
+    if (!this.reduced) { this.shake += 1.4; this.hitstop = .07; this.slow = .22; this.punch += .1; }
+    this.streaks(new THREE.Vector3(0, 3, 1.2), this.reduced ? 6 : 24, 0xd5fc71);
     this.beamLife = .55; this.beam.scale.x = this.beam.scale.z = .75;
   }
   resize() {
@@ -325,6 +337,7 @@ export class OfficeScene {
     let motionDt = Math.min(dt, .05); this.clock += motionDt;
     if (game.phase === 'paused') { this.render(); return; }
     if (this.hitstop > 0) { this.hitstop -= dt; motionDt = 0; }
+    else if (this.slow < 1) { motionDt *= this.slow; this.slow += (1 - this.slow) * Math.min(1, dt * 3.5); if (this.slow > .97) this.slow = 1; }
     this.probeTime += dt; this.probeFrames++;
     if (this.probeTime > 3 && this.probeFrames > 20) {
       if (this.probeTime / this.probeFrames > .024 && this.quality > 0) { this.quality = 0; this.bloom.enabled = false; this.renderer.shadowMap.enabled = false; this.renderer.setPixelRatio(1); this.resize(); }
@@ -338,6 +351,10 @@ export class OfficeScene {
       group.scale.set(1 + this.kicks[i] * .16, 1 - this.kicks[i] * .24, 1 + this.kicks[i] * .12);
       group.rotation.z = Math.sin(this.clock * 60) * this.kicks[i] * .09;
       group.position.y = slot.kind === BONUS && slot.hp > 0 && !this.reduced ? .18 + Math.abs(Math.sin(this.clock * 5)) * .12 : .18;
+      if (slot.kind === BONUS && slot.hp > 0 && group.visible && Math.random() < motionDt * 14) {
+        const at = group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(rand(1.4), .3 + Math.random() * .8, rand(1)));
+        this.spawn(at, new THREE.Vector3(.06, .06, .06), Math.random() < .5 ? 0xffd84d : 0xffffff, new THREE.Vector3(rand(.6), 1.2 + Math.random(), rand(.6)), .5 + Math.random() * .4, false);
+      }
       group.getWorldPosition(this.project); this.project.y += .35; this.project.z += .9; this.project.project(this.camera);
       anchors[i].style.left = `${(this.project.x * .5 + .5) * this.size.w}px`;
       anchors[i].style.top = `${(-this.project.y * .5 + .5) * this.size.h}px`;
@@ -363,6 +380,8 @@ export class OfficeScene {
         this.stage++; this.onEvent?.('crash');
       }
       if (t >= .9) { this.ring.scale.setScalar(1 + (t - .9) * 9); (this.ring.material as THREE.MeshBasicMaterial).opacity = this.reduced ? 0 : Math.max(0, 1 - (t - .9) * 1.5); }
+      // Confetti rains down as the dust settles.
+      if (t > 2.6 && t < 3.5 && !this.reduced) for (let i = 0; i < 3; i++) this.spawn(new THREE.Vector3(rand(9), 8.5 + Math.random() * 2, rand(5)), new THREE.Vector3(.16 + Math.random() * .1, .012, .22), [0xd5fc71, 0xff665a, 0xb8a4ff, 0xffd84d, 0xffffff][i % 5 + Math.floor(Math.random() * 2) % 5], new THREE.Vector3(rand(2), -1 - Math.random(), rand(2)), 3 + Math.random() * 1.5, true);
       this.stamp.position.set(0, -.25, this.building.visible ? 3.6 : 0);
       this.stamp.visible = t > 2.7; this.stamp.scale.setScalar(Math.min(1, Math.max(0, (t - 2.7) * 2.5)));
       this.stamp.rotation.y = this.reduced ? 0 : this.clock * .25;
@@ -376,7 +395,7 @@ export class OfficeScene {
     // The building sits higher on the landing page and drops toward the stamp once it is gone.
     const lookTarget = finale && !this.building.visible ? 1.1 : game.phase === 'ready' ? 2.2 : 1.85;
     this.look.y += (lookTarget - this.look.y) * Math.min(1, dt * 3);
-    distance *= 1 - Math.min(this.shake, 1) * .03;
+    distance *= (1 - Math.min(this.shake, 1) * .03) * (1 - Math.min(this.punch, .3)); this.punch *= Math.exp(-dt * 7);
     this.camera.position.set(11 * distance + rand(this.shake * .7), 9 * distance + rand(this.shake * .6), 15.4 * distance);
     this.camera.lookAt(this.look); this.shake *= Math.exp(-dt * 7);
     for (const flash of this.flashes) {

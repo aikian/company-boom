@@ -19,9 +19,11 @@ await writeFile('dist/sw.js', `const CACHE = 'company-boom-${version}';
 const BASE = ${JSON.stringify(base)};
 const FILES = ${JSON.stringify(files.map(path => base + path))};
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))));
+self.addEventListener('message', event => { if (event.data === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', event => event.waitUntil((async () => {
   for (const key of await caches.keys()) if (key.startsWith('company-boom-') && key !== CACHE) await caches.delete(key);
   await self.clients.claim();
+  for (const client of await self.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'activated', version: '${version}' });
 })()));
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);

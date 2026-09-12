@@ -4,7 +4,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { createGzip } from 'node:zlib';
-import { insert, top, validate } from './scores.mjs';
+import { dayStart, insert, positionOf, since, top, validate } from './scores.mjs';
 
 const PORT = Number(process.env.PORT || 80);
 const ROOT = resolve(process.env.STATIC_DIR || 'dist');
@@ -37,7 +37,7 @@ function json(res, status, body) {
 
 async function api(req, res, path) {
   if (path !== 'scores') return json(res, 404, { error: 'not found' });
-  if (req.method === 'GET') return json(res, 200, { top: top(scores, 10), total: scores.length });
+  if (req.method === 'GET') { const today = since(scores, dayStart()); return json(res, 200, { top: top(scores, 10), total: scores.length, today: top(today, 10), todayTotal: today.length }); }
   if (req.method === 'DELETE') {
     // Admin reset: DELETE /api/scores with 'Authorization: Bearer <ADMIN_TOKEN>' (env). Disabled when no token is set.
     const token = process.env.ADMIN_TOKEN;
@@ -54,7 +54,8 @@ async function api(req, res, path) {
   const entry = validate(body);
   if (!entry) return json(res, 400, { error: 'invalid score' });
   const result = insert(scores, entry); scores = result.list; await persist();
-  return json(res, 201, { position: result.position, total: scores.length, top: top(scores, 10) });
+  const today = since(scores, dayStart());
+  return json(res, 201, { position: result.position, total: scores.length, top: top(scores, 10), todayPosition: positionOf(today, entry), todayTotal: today.length, today: top(today, 10) });
 }
 
 function serve(req, res, path) {

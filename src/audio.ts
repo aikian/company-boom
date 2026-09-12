@@ -5,6 +5,7 @@ export class Sound {
   muted = false;
   private master?: GainNode;
   private noiseBuffer?: AudioBuffer;
+  private drone?: { gain: GainNode; oscillators: OscillatorNode[] };
   unlock() {
     if (this.muted) return;
     try {
@@ -84,5 +85,26 @@ export class Sound {
     for (let i = 0; i < 8; i++) this.tone(1200 + Math.random() * 2800, 400, .2, .1, 'triangle', .3 + i * .04);
   }
   bonus() { for (const [i, f] of [1319, 1760, 2637].entries()) this.tone(f, f, .35, .16, 'triangle', i * .09); this.noise(.25, .15, 'highpass', 5000, 9000, .5); }
+  milestone(level: number) {
+    const base = [660, 880, 1175][Math.min(level, 2)];
+    for (let i = 0; i < 3; i++) this.tone(base * (1 + i * .5), base * (1 + i * .5) * 1.02, .2, .2, 'square', i * .06);
+    this.noise(.3, .3, 'highpass', 2500, 8000, .6);
+    if (level >= 2) this.tone(70, 140, .6, .5, 'sawtooth', .1);
+  }
+  // Low pulsing drone while the combo is hot; ramps in and out so it never clicks.
+  fever(on: boolean) {
+    const ctx = this.ready;
+    if (on && ctx && !this.drone) {
+      const gain = ctx.createGain(); gain.gain.setValueAtTime(.0001, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(.09, ctx.currentTime + .4);
+      const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 240; filter.Q.value = 7;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 4.2; const depth = ctx.createGain(); depth.gain.value = 140; lfo.connect(depth); depth.connect(filter.frequency); lfo.start();
+      const oscillators = [55, 55.7, 110].map(f => { const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = f; osc.connect(filter); osc.start(); return osc; });
+      oscillators.push(lfo); filter.connect(gain); gain.connect(this.master!); this.drone = { gain, oscillators };
+    } else if (!on && this.drone) {
+      const { gain, oscillators } = this.drone; this.drone = undefined; const ctx = this.context!;
+      gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(Math.max(gain.gain.value, .0001), ctx.currentTime); gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .5);
+      for (const osc of oscillators) osc.stop(ctx.currentTime + .55);
+    }
+  }
   celebrate() { for (const [i, f] of [523, 659, 784, 1047].entries()) this.tone(f, f, .45, .18, 'triangle', i * .13); this.noise(.5, .25, 'highpass', 3000, 8000, .5, .5); }
 }

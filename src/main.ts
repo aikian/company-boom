@@ -45,14 +45,14 @@ document.querySelector('#app')!.innerHTML = `
     <div class="scene-top"><div><span class="live-dot"></span><span id="scene-label">오늘의 철거 대상</span></div><span class="edition">OFFICE / 001</span></div>
     <div class="hud" id="hud" hidden><div><small>남은 시간</small><strong id="timer">15<span>s</span></strong></div><div class="hud-score"><small>SCORE</small><strong id="score">0</strong></div><button id="pause" class="icon-button" aria-label="일시정지">${icon('pause')}</button></div>
     <div id="scene" class="scene"><div id="loading" class="loading"><span></span>당신의 회사를 준비하고 있어요</div><div class="target-layer" id="target-layer"></div></div>
-    <div id="combo" class="combo" hidden><strong>0</strong><span>COMBO</span><i class="combo-bar"><b id="combo-bar"></b></i></div>
+    <div id="flash" class="flash" aria-hidden="true"></div><div id="combo" class="combo" hidden><strong>0</strong><span>COMBO</span><i class="combo-bar"><b id="combo-bar"></b></i></div>
     <div class="scene-caption" id="scene-caption"><span class="mini-tag">100% 가상 회사</span><p>주식회사 내일부터</p><small>업무는 무한. 당신의 인내심은 유한.</small></div>
     <div id="play-bottom" class="play-bottom" hidden><p id="quip">사무용품을 터치하면 15초가 시작돼요.</p><div class="rage-label"><span>${icon('bolt')} 분노 게이지</span><strong id="rage-value">0%</strong></div><div class="rage-track"><div id="rage-fill"></div></div><button id="fire" class="primary fire-button" disabled>${icon('bolt')}<span>퇴사빔 충전 중</span><small>0 / 100</small></button></div>
     <div id="finale-caption" class="finale-caption" hidden><small>ULTIMATE RELEASE</small><h2>퇴사빔.</h2><p>업무 종료. 내 인생 시작.</p></div>
     <div id="pause-panel" class="pause-panel" hidden><span>Ⅱ</span><h2>잠깐 쉬어가요.</h2><p>스트레스도, 타이머도 멈췄어요.</p><button id="resume" class="primary">계속하기 ${icon('arrow')}</button><button id="quit" class="subtle">처음으로</button></div>
     <div id="scene-error" class="pause-panel" hidden><h2>3D 화면을 열 수 없어요.</h2><p>최신 Safari나 Chrome에서 다시 시도해 주세요.</p><button id="reload" class="primary">다시 불러오기</button></div>
   </section>
-  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><span id="ranking-total"></span></div><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div></section>
+  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div><small class="version">v${__APP_VERSION__}</small></section>
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
 <dialog id="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">MAKE YOURSELF COMFORTABLE</div><h2>내 취향대로.</h2><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림과 파편 효과를 줄여요.</p><button id="settings-save" class="primary">적용하기</button></dialog>
@@ -87,22 +87,54 @@ const reduced = $('reduced') as HTMLInputElement;
 reduced.checked = readStore('boom-reduced', String(matchMedia('(prefers-reduced-motion: reduce)').matches)) === 'true';
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 type Entry = { name: string; score: number; rank: string; company?: string };
-function renderRanking(top: Entry[], total: number) {
-  $('ranking-total').textContent = total ? `${total.toLocaleString()}명 참여` : '';
+type Board = { top: Entry[]; total: number; today: Entry[]; todayTotal: number };
+let board: Board = { top: [], total: 0, today: [], todayTotal: 0 }; let tab: 'today' | 'all' = 'today';
+function renderRanking(data: Board) {
+  board = data; const top = tab === 'today' ? data.today : data.top; const total = tab === 'today' ? data.todayTotal : data.total;
+  $('tab-today').classList.toggle('selected', tab === 'today'); $('tab-all').classList.toggle('selected', tab === 'all');
+  $('tab-today').setAttribute('aria-selected', String(tab === 'today')); $('tab-all').setAttribute('aria-selected', String(tab === 'all'));
+  $('ranking-total').textContent = total ? `${tab === 'today' ? '오늘' : '전체'} ${total.toLocaleString()}명 참여` : '';
   $('ranking').innerHTML = top.length
     ? top.map((entry, i) => `<li${entry.name === playerName() && entry.score === best ? ' class="mine"' : ''}><span class="place">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="who">${escape(smashed(entry.name, entry.company || '주식회사 내일부터'))}<small>${escape(entry.rank)}</small></span><b>${entry.score.toLocaleString()}</b></li>`).join('')
-    : '<li class="ranking-empty">아직 아무도 없어요. 첫 번째 퇴사자가 되어 보세요!</li>';
+    : `<li class="ranking-empty">${tab === 'today' ? '오늘 아직 아무도 안 부쉈어요. 첫 퇴사자가 되어 보세요!' : '아직 아무도 없어요. 첫 번째 퇴사자가 되어 보세요!'}</li>`;
 }
+$('tab-today').addEventListener('click', () => { tab = 'today'; renderRanking(board); });
+$('tab-all').addEventListener('click', () => { tab = 'all'; renderRanking(board); });
+// Daily streak: one stamp per local calendar day you played.
+const today = () => new Date().toLocaleDateString('sv-SE');
+function renderStreak() {
+  let days: string[] = []; try { days = JSON.parse(readStore('boom-days', '[]')); } catch { days = []; }
+  const set = new Set(days); let streak = 0; const cursor = new Date();
+  if (!set.has(today())) cursor.setDate(cursor.getDate() - 1);
+  while (set.has(cursor.toLocaleDateString('sv-SE'))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+  const plays = Number(readStore('boom-plays', '0')) || 0;
+  $('streak').hidden = !plays;
+  $('streak').innerHTML = `${streak > 1 ? `🔥 <b>${streak}일</b> 연속 퇴근 중` : set.has(today()) ? '✅ 오늘 출근 도장 완료' : '🕘 오늘 아직 안 부쉈어요'} · 총 <b>${plays}</b>판`;
+}
+function stampToday() {
+  let days: string[] = []; try { days = JSON.parse(readStore('boom-days', '[]')); } catch { days = []; }
+  if (!days.includes(today())) days.push(today());
+  writeStore('boom-days', JSON.stringify(days.slice(-400))); writeStore('boom-plays', String((Number(readStore('boom-plays', '0')) || 0) + 1)); renderStreak();
+}
+renderStreak();
 async function loadRanking() {
-  try { const data = await (await fetch(`${API}scores`, { cache: 'no-store' })).json(); renderRanking(data.top, data.total); }
+  try { renderRanking(await (await fetch(`${API}scores`, { cache: 'no-store' })).json()); }
   catch { $('ranking').innerHTML = '<li class="ranking-empty">랭킹을 불러올 수 없어요. 게임은 그대로 즐길 수 있어요.</li>'; }
 }
 async function submitScore() {
   const body = { name: playerName(), score: game.score, combo: game.maxCombo, destroyed: game.destroyed, rank: game.rank, company: companyName() };
   const response = await fetch(`${API}scores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return (await response.json()) as { position: number; total: number; top: Entry[] };
+  return (await response.json()) as Board & { position: number; todayPosition: number };
 }
+function screenFlash(color: string) {
+  const el = $('flash'); el.style.background = color; el.classList.add('on');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('on')));
+}
+function callout(text: string, cls = '') {
+  const el = document.createElement('div'); el.className = `callout ${cls}`; el.textContent = text; $('arena').append(el); setTimeout(() => el.remove(), 1200);
+}
+let shownScore = 0; let feverOn = false;
 function float(text: string, left: string, top: string, big = false) {
   const points = document.createElement('span'); points.className = big ? 'floating-points big' : 'floating-points'; points.textContent = text;
   points.style.left = left; points.style.top = top; $('target-layer').append(points); setTimeout(() => points.remove(), big ? 1300 : 850);
@@ -113,6 +145,11 @@ function hit(index: number) {
   sound.unlock(); sound.hit(event.kind, event.broken, game.combo); scene?.hit(index, event.broken, event.kind); buzz(event.broken ? [30, 20, 40] : 12);
   $('quip').textContent = event.broken ? targets[event.kind].quip : ['좋아요, 한 번 더!', '부숴! 부숴!', '아직 안 부서졌어요.', '거의 다 왔어요!'][Math.floor(Math.random() * 4)];
   if (event.points) float(`+${event.points.toLocaleString()}`, anchors[index].style.left, anchors[index].style.top, event.kind === BONUS);
+  if (event.broken) screenFlash(event.kind === BONUS ? 'rgba(255,216,77,.34)' : 'rgba(255,244,219,.16)');
+  if (game.combo === 5) { callout('5 COMBO! ×1.5'); sound.milestone(0); }
+  else if (game.combo === 10) { callout('10 COMBO 🔥 ×2', 'hot'); sound.milestone(1); buzz([15, 20, 30]); }
+  else if (game.combo === 20) { callout('20 COMBO ⚡ FEVER ×3', 'fever'); sound.milestone(2); buzz([20, 20, 20, 20, 80]); }
+  else if (game.combo > 20 && game.combo % 10 === 0) callout(`${game.combo} COMBO ⚡`, 'fever');
   const combo = $('combo'); combo.classList.remove('pop'); void combo.offsetWidth; combo.classList.add('pop');
   sync();
 }
@@ -124,7 +161,12 @@ function sync() {
   $('pause-panel').hidden = game.phase !== 'paused'; $('finale-caption').hidden = game.phase !== 'finale';
   $('timer').innerHTML = `${Math.ceil(game.timeLeft)}<span>s</span>`;
   $('timer').classList.toggle('urgent', game.started && game.timeLeft <= 5);
-  $('score').textContent = game.score.toLocaleString(); $('rage-value').textContent = `${game.rage}%`; $('rage-fill').style.width = `${game.rage}%`;
+  shownScore = Math.abs(game.score - shownScore) < 2 || game.phase === 'result' ? game.score : shownScore + (game.score - shownScore) * .22;
+  $('score').textContent = Math.round(shownScore).toLocaleString(); $('rage-value').textContent = `${game.rage}%`; $('rage-fill').style.width = `${game.rage}%`;
+  document.querySelector('.rage-track')!.classList.toggle('hot', game.rage >= 70);
+  $('arena').classList.toggle('hot', game.phase === 'playing' && game.combo >= 10); $('arena').classList.toggle('fever', game.phase === 'playing' && game.combo >= 20);
+  const wantFever = game.phase === 'playing' && game.combo >= 10 && !sound.muted;
+  if (wantFever !== feverOn) { feverOn = wantFever; sound.fever(feverOn); }
   const fire = $<HTMLButtonElement>('fire'); fire.disabled = game.rage < 100 || game.phase !== 'playing'; fire.classList.toggle('charged', game.rage === 100);
   fire.querySelector('span')!.textContent = game.rage === 100 ? '퇴사빔 발사! 전부 부수기 +1,000' : `퇴사빔 충전 중${game.beams ? ` · ${game.beams}회 발사` : ''}`; fire.querySelector('small')!.textContent = `${game.rage} / 100`;
   $('combo').hidden = game.combo < 2 || game.phase !== 'playing'; $('combo').querySelector('strong')!.textContent = String(game.combo);
@@ -138,22 +180,29 @@ function sync() {
 function begin() {
   if (!scene) return;
   writeStore('boom-name', nameInput.value.trim()); writeStore('boom-company', companyInput.value.trim()); applyCompany();
-  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; captured = ''; sound.unlock(); sync();
+  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; captured = ''; shownScore = 0; sound.unlock(); sync(); stampToday();
   $('quip').textContent = `사무용품을 터치하면 ${ROUND}초가 시작돼요.`;
   $('arena').scrollIntoView({ behavior: 'instant', block: 'start' });
 }
-function home() { game.reset(); scene?.reset(); sync(); void loadRanking(); window.scrollTo({ top: 0, behavior: 'instant' }); }
+function home() { game.reset(); scene?.reset(); sync(); void loadRanking(); window.scrollTo({ top: 0, behavior: 'instant' }); applyUpdate(); }
+// A new build swaps in silently while you are on the landing page; mid-round it waits until you are back home.
+let pendingUpdate: (() => void) | null = null;
+function applyUpdate() {
+  if (!pendingUpdate || game.phase !== 'ready' || document.querySelector('dialog[open]')) return;
+  const apply = pendingUpdate; pendingUpdate = null; notify('새 버전으로 업데이트하는 중…'); setTimeout(apply, 600);
+}
+try { if (sessionStorage.getItem('boom-updated')) { sessionStorage.removeItem('boom-updated'); setTimeout(() => notify(`업데이트 완료 · v${__APP_VERSION__}`), 800); } } catch { /* optional */ }
 $('enter').addEventListener('submit', event => { event.preventDefault(); if (!$<HTMLButtonElement>('start').disabled) begin(); });
 $('fire').addEventListener('click', () => {
   const strike = game.fire(); if (!strike) return;
-  sound.unlock(); sound.zap(); scene?.strike(strike.cleared); buzz([60, 40, 60, 40, 120]);
+  sound.unlock(); sound.zap(); scene?.strike(strike.cleared); buzz([60, 40, 60, 40, 120]); screenFlash('rgba(213,252,113,.5)'); callout('퇴사빔!!', 'fever');
   float(`+${strike.gained.toLocaleString()}`, '50%', '38%', true); $('quip').textContent = `퇴사빔! 표적 ${strike.cleared.length}개를 한 번에 날렸어요.`;
   rageReady = false; sync();
 });
 $('pause').addEventListener('click', () => { game.pause(); sync(); });
 $('resume').addEventListener('click', () => { lastTime = performance.now(); game.resume(); sound.unlock(); sync(); });
 $('quit').addEventListener('click', home);
-$('sound').addEventListener('click', () => { sound.muted = !sound.muted; writeStore('boom-muted', sound.muted ? 'yes' : 'no'); sound.unlock(); soundUI(); });
+$('sound').addEventListener('click', () => { sound.muted = !sound.muted; writeStore('boom-muted', sound.muted ? 'yes' : 'no'); if (sound.muted) { sound.fever(false); feverOn = false; } sound.unlock(); soundUI(); });
 const settings = $<HTMLDialogElement>('settings-dialog');
 $('settings').addEventListener('click', () => { game.pause(); sync(); settings.showModal(); });
 $('settings-close').addEventListener('click', () => settings.close());
@@ -173,7 +222,7 @@ function showResult() {
   $('result-position').textContent = '랭킹 등록 중…';
   try { captured = scene?.capture() || ''; } catch { captured = ''; }
   sound.celebrate(); result.showModal();
-  submitScore().then(data => { $('result-position').innerHTML = `전체 <b>${data.position}위</b> / ${data.total.toLocaleString()}명`; renderRanking(data.top, data.total); })
+  submitScore().then(data => { $('result-position').innerHTML = `오늘 <b>${data.todayPosition}위</b> / ${data.todayTotal.toLocaleString()}명 · 전체 <b>${data.position}위</b> / ${data.total.toLocaleString()}명`; renderRanking(data); })
     .catch(() => { $('result-position').textContent = '랭킹 서버에 연결하지 못했어요. 기록은 이 기기에 남아요.'; });
 }
 $('replay').addEventListener('click', () => { result.close(); begin(); });
@@ -211,7 +260,7 @@ $('save-card').addEventListener('click', async () => {
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { game.pause(); sync(); void sound.context?.suspend(); } lastTime = performance.now(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && game.phase === 'playing') { game.pause(); sync(); } });
-setupPwa(notify);
+setupPwa(notify, apply => { pendingUpdate = apply; applyUpdate(); });
 sync(); void loadRanking();
 try {
   scene = new OfficeScene($('scene'), hit); scene.reduced = reduced.checked; document.body.classList.toggle('reduced-motion', reduced.checked);
@@ -230,7 +279,7 @@ function frame(now: number) {
     if (golden && !goldenShown) { sound.bonus(); buzz(25); $('quip').textContent = '⚡ 긴급 수정 요청 등장! 4초 안에 부수면 800점!'; }
     goldenShown = golden;
     if (game.phase === 'finale' && lastPhase !== 'finale') { sound.charge(); $('finale-caption').querySelector('h2')!.textContent = game.rage >= 100 ? '퇴사빔.' : '오늘은 여기까지.'; }
-    if (game.phase === 'finale' && game.finaleTime >= .9 && !boomPlayed) { sound.boom(); buzz([80, 30, 120]); boomPlayed = true; }
+    if (game.phase === 'finale' && game.finaleTime >= .9 && !boomPlayed) { sound.boom(); buzz([80, 30, 120]); boomPlayed = true; screenFlash('rgba(213,252,113,.6)'); }
     scene?.update(dt, game, anchors);
     if (game.phase === 'result' && lastPhase !== 'result') showResult();
     if (game.phase !== 'ready') sync();
