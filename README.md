@@ -26,7 +26,7 @@ node scripts/make-icons.mjs             # PWA 아이콘·소셜 미리보기 PNG
 | `src/audio.ts` | Web Audio 합성 효과음 (노이즈+저음 레이어, 콤보에 따라 피치 상승) |
 | `src/main.ts` | 첫 화면, HUD, 입력, 랭킹 표시·등록, 결과 카드 PNG, 공유 |
 | `src/pwa.ts` | 설치 안내, 서비스 워커 등록, localStorage 래퍼 |
-| `server/index.mjs` | 정적 파일 + `/boomcompany/api/scores` (GET 상위 10, POST 등록). 점수는 `/data/scores.json` |
+| `server/index.mjs` | 정적 파일 + `/boomcompany/api/scores` (GET 상위 10, POST 등록, DELETE 초기화 — Coolify 환경변수 `ADMIN_TOKEN`을 Bearer로). 점수는 `/data/scores.json` |
 | `server/scores.mjs` | 이름 정제, 점수 검증, 정렬·순위 계산 (테스트 대상) |
 | `tests/` | 게임 규칙과 랭킹 규칙 검증 |
 

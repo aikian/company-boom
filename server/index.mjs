@@ -38,6 +38,12 @@ function json(res, status, body) {
 async function api(req, res, path) {
   if (path !== 'scores') return json(res, 404, { error: 'not found' });
   if (req.method === 'GET') return json(res, 200, { top: top(scores, 10), total: scores.length });
+  if (req.method === 'DELETE') {
+    // Admin reset: DELETE /api/scores with 'Authorization: Bearer <ADMIN_TOKEN>' (env). Disabled when no token is set.
+    const token = process.env.ADMIN_TOKEN;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) return json(res, 403, { error: 'forbidden' });
+    scores = []; await persist(); return json(res, 200, { top: [], total: 0 });
+  }
   if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   if (limited(ip)) return json(res, 429, { error: 'too many submissions' });
