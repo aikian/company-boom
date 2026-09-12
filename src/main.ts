@@ -22,7 +22,7 @@ const icon = (name: string) => {
 
 document.querySelector('#app')!.innerHTML = `
 <header class="header">
-  <a class="brand" href="/" aria-label="회사 터뜨리기 홈"><span class="brand-mark">${icon('bolt')}</span><span>회사 터뜨리기<small>COMPANY BOOM</small></span></a>
+  <a class="brand" href="${import.meta.env.BASE_URL}" aria-label="회사 터뜨리기 홈"><span class="brand-mark">${icon('bolt')}</span><span>회사 터뜨리기<small>COMPANY BOOM</small></span></a>
   <div class="header-actions"><span class="online-dot">마음 편히, 한 판</span><button id="install-open" class="subtle">${icon('install')}<span>앱 설치</span></button><button id="sound" class="icon-button" aria-label="소리 켜기" aria-pressed="false">${icon('sound')}</button><button id="settings" class="icon-button" aria-label="게임 설정">⚙</button></div>
 </header>
 <main class="shell">
@@ -144,7 +144,7 @@ $('replay').addEventListener('click', () => { result.close(); begin(); });
 $('result-home').addEventListener('click', () => { result.close(); home(); });
 result.addEventListener('cancel', () => home());
 $('share').addEventListener('click', async () => {
-  const url = location.origin + '/';
+  const url = new URL(import.meta.env.BASE_URL, location.origin).href;
   try {
     if (navigator.share) await navigator.share({ title: '회사 터뜨리기', text: `오늘의 스트레스 ${game.score.toLocaleString()}점만큼 날렸어요. 당신도 한 판?`, url });
     else { await navigator.clipboard.writeText(url); notify('게임 링크를 복사했어요. 친구에게 보내주세요!'); }

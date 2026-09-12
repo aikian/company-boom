@@ -51,7 +51,7 @@ export function setupPwa(notify: (text: string) => void) {
   update();
   if (!standalone() && readStore('boom-installed') !== 'yes' && Date.now() - Number(readStore('boom-install-dismissed', '0')) > 7 * 86400000) open();
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(registration => {
       const ready = () => notify('오프라인 준비 완료 · 다음에는 인터넷 없이도 플레이해요.');
       if (registration.active) return;
       const worker = registration.installing;
