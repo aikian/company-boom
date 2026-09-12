@@ -28,7 +28,14 @@ node scripts/make-icons.mjs             # PWA 아이콘·소셜 미리보기 PNG
 | `src/pwa.ts` | 설치 안내, 서비스 워커 등록, localStorage 래퍼 |
 | `server/index.mjs` | 정적 파일 + `/boomcompany/api/scores` (GET 상위 10, POST 등록, DELETE 초기화 — Coolify 환경변수 `ADMIN_TOKEN`을 Bearer로). 점수는 `/data/scores.json` |
 | `server/scores.mjs` | 이름 정제, 점수 검증, 정렬·순위 계산 (테스트 대상) |
+| `server/push.mjs` | 퇴근 알림 Web Push: VAPID 키 자동 생성(`/data/vapid.json`), 구독 저장(`/data/push.json`), 30초마다 발송 스케줄러(구독자 로컬 시간 기준, 하루 1회) |
+| `server/plays.mjs` | 플레이 횟수 집계(`/data/plays.json`, KST 날짜별) → 첫 화면 하단 이번 달/오늘/누적 |
+| `src/notify.ts` | 알림 동의 → 권한 요청 → 구독 → 서버 등록 흐름, 끄기·테스트 |
+| `src/stats.ts` | 기기별 기록(총 판수·부순 수·퇴사빔·최고·최근 60판)과 칭호 8종 |
+| `src/themes.ts` | 사무실 테마 4종(기본·회의 지옥·마감 전날·연말 정산): 벽·조명·배경·층 이름만 바꿈 |
 | `tests/` | 게임 규칙과 랭킹 규칙 검증 |
+
+API: `GET/POST /api/plays`, `GET /api/push/key`, `POST /api/push/subscribe|unsubscribe|test`, `GET/POST/DELETE /api/scores`. 숨은 규칙: 20콤보 이상에서 퇴사빔을 쏘면 다음 표적이 **사장님 결재판**(5타, 3,000점, 6초)으로 한 판에 한 번 등장한다. `?debug`를 붙이면 `window.__boom`으로 게임 상태를 노출한다(QA용).
 
 배포: `Dockerfile` 한 개(빌드 스테이지 → node:22-alpine 런타임, 포트 80). Coolify 앱 FQDN은 `http://sub.uxo.kr/boomcompany`, 영구 볼륨 `/data`. 서버는 프록시가 `/boomcompany` 접두사를 벗기든 그대로 넘기든 모두 처리한다.
 

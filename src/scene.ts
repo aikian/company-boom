@@ -4,7 +4,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { BONUS, Game, targets } from './game';
+import { BONUS, BOSS, Game, targets } from './game';
+import { themes, type Theme } from './themes';
 
 type Piece = { position: THREE.Vector3; velocity: THREE.Vector3; rotation: THREE.Euler; spin: THREE.Vector3; dims: THREE.Vector3; life: number; paper: boolean };
 type Flash = { sprite: THREE.Sprite; life: number; maxLife: number; size: number };
@@ -35,6 +36,11 @@ export class OfficeScene {
   rings: Ring[] = [];
   targetKinds = [-1, -1, -1, -1, -1, -1];
   kicks = [0, 0, 0, 0, 0, 0];
+  theme: Theme = themes[0]; name = '주식회사 내일부터';
+  city = new THREE.Group();
+  private hemi = new THREE.HemisphereLight(0xe6e5ff, 0x3a354f, 2.8);
+  private sun = new THREE.DirectionalLight(0xffeed0, 4.5);
+  private rim = new THREE.DirectionalLight(0xa19aff, 3);
   clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0; beamLife = 0; slow = 1; punch = 0;
   onEvent?: (event: SceneEvent) => void;
   private probeFrames = 0; private probeTime = 0;
@@ -60,63 +66,17 @@ export class OfficeScene {
     container.prepend(this.renderer.domElement);
     this.camera.position.set(11, 9, 15.4);
     this.camera.lookAt(this.look);
-    this.scene.add(new THREE.HemisphereLight(0xe6e5ff, 0x3a354f, 2.8));
-    const sun = new THREE.DirectionalLight(0xffeed0, 4.5); sun.position.set(-3, 10, 7); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -7; sun.shadow.camera.right = 7; sun.shadow.camera.top = 9; sun.shadow.camera.bottom = -6;
-    sun.shadow.bias = -.001; this.scene.add(sun);
-    const rim = new THREE.DirectionalLight(0xa19aff, 3); rim.position.set(6, 5, -5); this.scene.add(rim);
+    this.scene.add(this.hemi);
+    this.sun.position.set(-3, 10, 7); this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.camera.left = -7; this.sun.shadow.camera.right = 7; this.sun.shadow.camera.top = 9; this.sun.shadow.camera.bottom = -6;
+    this.sun.shadow.bias = -.001; this.scene.add(this.sun);
+    this.rim.position.set(6, 5, -5); this.scene.add(this.rim);
     this.scene.add(this.point); this.point.position.set(0, 4, 5);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: .22 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -.25; ground.receiveShadow = true; this.scene.add(ground);
-    this.scene.add(this.building);
-    this.box(this.building, [8.2, .32, 5.2], [0, -.12, 0], 0x313b3e, .15);
-    this.box(this.building, [7.9, .08, 4.9], [0, .08, 0], 0x5b6870);
-    // The model is assembled from shared low-poly geometry; every box remembers its size so it can fly apart later.
-    for (let floor = 0; floor < 3; floor++) {
-      const group = new THREE.Group(); group.position.y = floor * 1.8 + .18; this.building.add(group); this.floors.push(group);
-      this.box(group, [6.6, .22, 3.8], [0, 0, 0], 0xe5dece);
-      this.box(group, [6.6, 1.65, .16], [0, .9, -1.8], [0x8e9caa, 0x94a695, 0xa8a0bb][floor]);
-      for (const x of [-3.16, 3.16]) {
-        this.box(group, [.22, 1.8, 3.8], [x, .85, 0], 0xd9d3c7);
-        this.box(group, [.26, 1.8, .26], [x, .85, 1.78], 0xeae4d7);
-      }
-      this.box(group, [6.5, .12, .14], [0, 1.58, -1.6], 0xf9e8a2);
-      for (const x of [-2.15, -.72, .72, 2.15]) {
-        this.windows.push(this.box(group, [1.12, .77, .05], [x, 1.03, -1.68], WINDOW));
-        this.box(group, [.025, .8, .06], [x, 1.03, -1.64], 0xc2d4c5);
-        this.box(group, [1.12, .025, .06], [x, 1.03, -1.64], 0xc2d4c5);
-      }
-      const plate = this.label(`0${floor + 1}F  /  ${['PRINT ROOM', 'OVERTIME', 'MEETING'][floor]}`, '#2c353b', '#f5eedc', 512, 90);
-      plate.scale.set(1.7, .30, 1); plate.position.set(-2.1, -.025, 1.94); group.add(plate);
-      for (let side = 0; side < 2; side++) {
-        const index = floor * 2 + side;
-        const target = new THREE.Group(); target.position.set(side === 0 ? -1.5 : 1.45, .18, .18);
-        group.add(target); this.targetGroups.push(target);
-        const pick = new THREE.Mesh(new THREE.BoxGeometry(2.35, 1.25, 2.1), new THREE.MeshBasicMaterial({ visible: false }));
-        pick.position.set(target.position.x, .75, .2); pick.userData.index = index; pick.userData.pick = true; group.add(pick); this.pickMeshes.push(pick);
-      }
-      this.plant(group, 2.6, .12, -1.2, .65);
-      this.props.push(this.box(group, [.45, .7, .42], [-2.6, .44, -1.15], 0xdac79c));
-    }
-    const roof = new THREE.Group(); roof.position.y = 5.68; this.building.add(roof); this.floors.push(roof);
-    this.box(roof, [6.8, .26, 4], [0, 0, 0], 0xe7e2d6);
-    this.box(roof, [2, .6, 1.3], [1.5, .4, -.4], 0x819194);
-    for (let i = 0; i < 6; i++) this.box(roof, [1.65, .04, .07], [1.5, .72, -.87 + i * .18], 0x3d4d51);
-    this.props.push(this.box(roof, [.07, 1.1, .07], [-2.4, .7, -.8], 0xa8b3b0));
-    this.box(roof, [.9, .06, .06], [-2.4, 1.14, -.8], 0xa8b3b0);
-    this.box(roof, [4.5, .8, .16], [-.4, .69, 1.65], 0x212b2a);
-    this.sign = this.label('주식회사 내일부터', '#d5fc71', '#212b2a', 1024, 180);
-    this.sign.scale.set(4.23, .74, 1); this.sign.position.set(-.4, .69, 1.75); roof.add(this.sign);
-    this.plant(this.building, -3.7, .1, 1.4, 1.2);
-    this.plant(this.building, 3.7, .1, -1.35, 1.4);
-    for (let i = 0; i < 3; i++) this.box(this.building, [.4, .12, .7], [1.8 + i * .6, .1, 2.25], 0xd7daaf);
-    for (const prop of this.props) prop.userData.rz = prop.rotation.z;
-    // A restrained city backdrop gives scale without distracting from the office.
-    const city = new THREE.Group(); this.scene.add(city);
-    for (let i = 0; i < 12; i++) {
-      const h = 1 + ((i * 7) % 5) * .45;
-      this.box(city, [.9 + i % 2 * .35, h, 1], [(i - 5.5) * 1.5, h / 2 - .1, -5 - i % 3], 0x242d32);
-    }
+    this.scene.add(this.building); this.scene.add(this.city);
+    this.sign = this.label(this.name, '#d5fc71', '#212b2a', 1024, 180);
+    this.build(this.theme);
     this.particles = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .65 }), 700);
     this.particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.particles.frustumCulled = false; this.particles.count = 0; this.particles.castShadow = true; this.scene.add(this.particles);
     const glow = document.createElement('canvas'); glow.width = glow.height = 64;
@@ -149,6 +109,59 @@ export class OfficeScene {
       const hits = this.raycaster.intersectObjects(this.pickMeshes, false); if (hits.length) this.onHit(hits[0].object.userData.index);
     });
   }
+  // Rebuilds the whole diorama in a theme's palette. Geometry and materials are shared and cached, so this is cheap.
+  build(theme: Theme) {
+    this.theme = theme;
+    this.building.clear(); this.city.clear();
+    this.floors = []; this.targetGroups = []; this.pickMeshes = []; this.windows = []; this.props = []; this.targetKinds.fill(-1);
+    this.hemi.color.set(theme.sky[0]); this.hemi.groundColor.set(theme.sky[1]); this.sun.color.set(theme.sun); this.rim.color.set(theme.rim);
+    this.renderer.toneMappingExposure = theme.exposure;
+    this.box(this.building, [8.2, .32, 5.2], [0, -.12, 0], theme.base, .15);
+    this.box(this.building, [7.9, .08, 4.9], [0, .08, 0], theme.deck);
+    for (let floor = 0; floor < 3; floor++) {
+      const group = new THREE.Group(); group.position.y = floor * 1.8 + .18; this.building.add(group); this.floors.push(group);
+      this.box(group, [6.6, .22, 3.8], [0, 0, 0], theme.slab);
+      this.box(group, [6.6, 1.65, .16], [0, .9, -1.8], theme.walls[floor]);
+      for (const x of [-3.16, 3.16]) {
+        this.box(group, [.22, 1.8, 3.8], [x, .85, 0], theme.trim);
+        this.box(group, [.26, 1.8, .26], [x, .85, 1.78], theme.slab);
+      }
+      this.box(group, [6.5, .12, .14], [0, 1.58, -1.6], 0xf9e8a2);
+      for (const x of [-2.15, -.72, .72, 2.15]) {
+        this.windows.push(this.box(group, [1.12, .77, .05], [x, 1.03, -1.68], WINDOW));
+        this.box(group, [.025, .8, .06], [x, 1.03, -1.64], 0xc2d4c5);
+        this.box(group, [1.12, .025, .06], [x, 1.03, -1.64], 0xc2d4c5);
+      }
+      const plate = this.label(`0${floor + 1}F  /  ${theme.floors[floor]}`, '#2c353b', '#f5eedc', 512, 90);
+      plate.scale.set(1.7, .30, 1); plate.position.set(-2.1, -.025, 1.94); group.add(plate);
+      for (let side = 0; side < 2; side++) {
+        const index = floor * 2 + side;
+        const target = new THREE.Group(); target.position.set(side === 0 ? -1.5 : 1.45, .18, .18);
+        group.add(target); this.targetGroups.push(target);
+        const pick = new THREE.Mesh(new THREE.BoxGeometry(2.35, 1.25, 2.1), new THREE.MeshBasicMaterial({ visible: false }));
+        pick.position.set(target.position.x, .75, .2); pick.userData.index = index; pick.userData.pick = true; group.add(pick); this.pickMeshes.push(pick);
+      }
+      this.plant(group, 2.6, .12, -1.2, .65);
+      this.props.push(this.box(group, [.45, .7, .42], [-2.6, .44, -1.15], 0xdac79c));
+    }
+    const roof = new THREE.Group(); roof.position.y = 5.68; this.building.add(roof); this.floors.push(roof);
+    this.box(roof, [6.8, .26, 4], [0, 0, 0], theme.slab);
+    this.box(roof, [2, .6, 1.3], [1.5, .4, -.4], 0x819194);
+    for (let i = 0; i < 6; i++) this.box(roof, [1.65, .04, .07], [1.5, .72, -.87 + i * .18], 0x3d4d51);
+    this.props.push(this.box(roof, [.07, 1.1, .07], [-2.4, .7, -.8], 0xa8b3b0));
+    this.box(roof, [.9, .06, .06], [-2.4, 1.14, -.8], 0xa8b3b0);
+    this.box(roof, [4.5, .8, .16], [-.4, .69, 1.65], 0x212b2a);
+    this.sign.scale.set(4.23, .74, 1); this.sign.position.set(-.4, .69, 1.75); this.sign.rotation.set(0, 0, 0); this.sign.visible = true; roof.add(this.sign); this.setName(this.name);
+    this.plant(this.building, -3.7, .1, 1.4, 1.2);
+    this.plant(this.building, 3.7, .1, -1.35, 1.4);
+    for (let i = 0; i < 3; i++) this.box(this.building, [.4, .12, .7], [1.8 + i * .6, .1, 2.25], 0xd7daaf);
+    for (const prop of this.props) prop.userData.rz = prop.rotation.z;
+    // A restrained city backdrop gives scale without distracting from the office.
+    for (let i = 0; i < 12; i++) {
+      const h = 1 + ((i * 7) % 5) * .45;
+      this.box(this.city, [.9 + i % 2 * .35, h, 1], [(i - 5.5) * 1.5, h / 2 - .1, -5 - i % 3], theme.city);
+    }
+  }
   private mat(color: number) { if (!this.materials.has(color)) this.materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: .68 })); return this.materials.get(color)!; }
   private box(parent: THREE.Object3D, dimensions: number[], position: number[], color: number, radius = .035) {
     const key = [...dimensions, radius].join('/');
@@ -173,10 +186,14 @@ export class OfficeScene {
     return new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, transparent: !background }));
   }
   setName(name: string) {
+    this.name = name;
     const material = this.sign.material as THREE.MeshBasicMaterial;
     const canvas = material.map!.image as HTMLCanvasElement; const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#212b2a'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#d5fc71'; ctx.fillText(name, canvas.width / 2, canvas.height / 2, canvas.width * .93); material.map!.needsUpdate = true;
+    ctx.fillStyle = this.theme.sign.bg; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = this.theme.sign.fg;
+    ctx.font = `800 ${canvas.height * .52}px "Malgun Gothic", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(name, canvas.width / 2, canvas.height / 2, canvas.width * .93); material.map!.needsUpdate = true;
   }
+  setTheme(theme: Theme) { if (theme !== this.theme) { this.build(theme); this.reset(); } }
   // The finale leaves a leaving-work stamp where the building stood.
   private createStamp() {
     const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, .14, 40), this.mat(0xff665a)); plate.position.y = .2; this.stamp.add(plate);
@@ -200,6 +217,16 @@ export class OfficeScene {
       this.box(group, [.86, .09, .08], [0, .37, .46], 0x35434d);
       this.box(group, [.66, .025, .45], [0, .33, .62], 0xfff0cd);
       this.box(group, [.18, .04, .13], [.48, .87, .24], 0xd7ff7d);
+    } else if (kind === BOSS) {
+      // The boss: a fat red approval folder with a gold clasp, a nameplate and the boss's untouched coffee.
+      this.box(group, [1.7, .16, 1.15], [0, .6, 0], 0x8f1f1f, .05);
+      this.box(group, [1.62, .22, 1.07], [0, .78, 0], 0xf6efe0, .02);
+      this.box(group, [1.7, .16, 1.15], [0, .97, 0], 0xb32828, .05);
+      this.box(group, [.28, .5, .12], [.55, .8, .6], 0xffd84d, .04);
+      const plate = this.label('결 재', '#ffe9a3', '#5a1414', 256, 96); plate.rotation.x = -Math.PI / 2; plate.scale.set(.9, .34, 1); plate.position.set(-.25, 1.06, .1); group.add(plate);
+      this.box(group, [.3, .32, .3], [.7, .16, -.35], 0x2f3437, .06);
+      this.box(group, [.24, .34, .24], [-.75, .17, -.4], 0xf1ede0, .08);
+      this.box(group, [.1, .12, .06], [-.6, .22, -.4], 0xf1ede0, .03);
     } else if (kind === BONUS) {
       // Golden "urgent request": a gilded tray piled with red-flagged papers and a desk bell.
       this.box(group, [1.5, .1, .95], [0, .6, 0], 0xe0b23a);
@@ -350,10 +377,11 @@ export class OfficeScene {
       this.kicks[i] *= Math.exp(-motionDt * 13);
       group.scale.set(1 + this.kicks[i] * .16, 1 - this.kicks[i] * .24, 1 + this.kicks[i] * .12);
       group.rotation.z = Math.sin(this.clock * 60) * this.kicks[i] * .09;
-      group.position.y = slot.kind === BONUS && slot.hp > 0 && !this.reduced ? .18 + Math.abs(Math.sin(this.clock * 5)) * .12 : .18;
-      if (slot.kind === BONUS && slot.hp > 0 && group.visible && Math.random() < motionDt * 14) {
+      const special = (slot.kind === BONUS || slot.kind === BOSS) && slot.hp > 0;
+      group.position.y = special && !this.reduced ? .18 + Math.abs(Math.sin(this.clock * (slot.kind === BOSS ? 3 : 5))) * .12 : .18;
+      if (special && group.visible && Math.random() < motionDt * 14) {
         const at = group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(rand(1.4), .3 + Math.random() * .8, rand(1)));
-        this.spawn(at, new THREE.Vector3(.06, .06, .06), Math.random() < .5 ? 0xffd84d : 0xffffff, new THREE.Vector3(rand(.6), 1.2 + Math.random(), rand(.6)), .5 + Math.random() * .4, false);
+        this.spawn(at, new THREE.Vector3(.06, .06, .06), Math.random() < .5 ? targets[slot.kind].color : 0xffffff, new THREE.Vector3(rand(.6), 1.2 + Math.random(), rand(.6)), .5 + Math.random() * .4, false);
       }
       group.getWorldPosition(this.project); this.project.y += .35; this.project.z += .9; this.project.project(this.camera);
       anchors[i].style.left = `${(this.project.x * .5 + .5) * this.size.w}px`;

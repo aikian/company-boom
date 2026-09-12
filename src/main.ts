@@ -1,5 +1,8 @@
 import './style.css';
-import { BONUS, Game, ROUND, targets } from './game';
+import { BONUS, BOSS, Game, ROUND, targets } from './game';
+import { themes, themeById } from './themes';
+import { createNotify } from './notify';
+import { BADGES, loadStats, recordRound, saveStats, sparkline } from './stats';
 import { OfficeScene } from './scene';
 import { Sound } from './audio';
 import { readStore, setupPwa, writeStore } from './pwa';
@@ -26,7 +29,7 @@ document.querySelector('#app')!.innerHTML = `
 </header>
 <main class="shell">
   <section class="intro" id="intro">
-    <div class="eyebrow"><span></span> 15초 스트레스 해소</div>
+    <div class="eyebrow"><span></span> <span id="greeting">15초 스트레스 해소</span></div>
     <h1>회사를<br><em>터뜨려라.</em><span class="title-star">✳</span></h1>
     <p class="lead">딱 15초. 부수고, 날리고, 퇴근.<br>오늘 쌓인 거, 여기서 다 털어요.</p>
     <form class="enter" id="enter"><label class="visually-hidden" for="player-name">닉네임</label><input id="player-name" maxlength="12" placeholder="닉네임 입력 (랭킹에 올라가요)" autocomplete="nickname" enterkeyhint="next"><label class="visually-hidden" for="company-name">부술 회사 이름 (선택)</label><input id="company-name" maxlength="16" placeholder="부술 회사 이름 (선택) · 기본: 주식회사 내일부터" autocomplete="organization" enterkeyhint="go"><button id="start" class="primary start-button" type="submit" disabled><span id="start-label">사무실 준비 중…</span>${icon('arrow')}</button></form>
@@ -52,10 +55,20 @@ document.querySelector('#app')!.innerHTML = `
     <div id="pause-panel" class="pause-panel" hidden><span>Ⅱ</span><h2>잠깐 쉬어가요.</h2><p>스트레스도, 타이머도 멈췄어요.</p><button id="resume" class="primary">계속하기 ${icon('arrow')}</button><button id="quit" class="subtle">처음으로</button></div>
     <div id="scene-error" class="pause-panel" hidden><h2>3D 화면을 열 수 없어요.</h2><p>최신 Safari나 Chrome에서 다시 시도해 주세요.</p><button id="reload" class="primary">다시 불러오기</button></div>
   </section>
-  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div><small class="version">v${__APP_VERSION__}</small></section>
+  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div><button id="stats-open" class="subtle stats-button">📊 내 기록 보기</button></section>
+  <footer class="plays" id="plays"><span>이번 달 플레이 <b id="plays-month">–</b>판</span><i>·</i><span>오늘 <b id="plays-today">–</b>판</span><i>·</i><span>누적 <b id="plays-total">–</b>판</span><small class="version">v${__APP_VERSION__}</small></footer>
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
-<dialog id="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">MAKE YOURSELF COMFORTABLE</div><h2>내 취향대로.</h2><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림과 파편 효과를 줄여요.</p><button id="settings-save" class="primary">적용하기</button></dialog>
+<dialog id="settings-dialog" class="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">SETTINGS</div><h2>내 취향대로.</h2>
+  <section class="setting-group"><label class="setting-row">소리 <input id="setting-sound" type="checkbox"></label><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림·슬로모션·파편 효과를 줄여요.</p></section>
+  <section class="setting-group"><h3>사무실 테마</h3><div class="theme-grid" id="theme-grid" role="radiogroup" aria-label="사무실 테마"></div></section>
+  <section class="setting-group"><h3>퇴근 알림</h3><label class="setting-row">매일 정한 시간에 알림 받기 <input id="notify-toggle" type="checkbox"></label>
+    <div id="notify-consent" class="consent" hidden><p><b>퇴근 알림을 켤까요?</b></p><ul><li>하루 <b>한 번</b>, 정한 시간에만 보내요.</li><li>내용은 "회사 터뜨리러 갈 시간" 같은 한 줄이에요.</li><li>닉네임 외에 다른 정보는 저장하지 않고, 언제든 여기서 끌 수 있어요.</li><li>다음 화면에서 브라우저가 알림 권한을 물어봐요.</li></ul><div class="row"><button id="notify-agree" class="primary">동의하고 켜기</button><button id="notify-cancel" class="subtle">취소</button></div></div>
+    <label class="setting-inline">알림 시간 <input id="notify-time" type="time" value="17:50" step="300"></label><div id="notify-body" class="row" hidden><button id="notify-test" class="subtle">테스트 알림 보내기</button></div>
+    <p class="muted" id="notify-status">브라우저 알림 권한이 필요해요. iPhone은 홈 화면에 설치한 앱에서 켤 수 있어요.</p></section>
+  <section class="setting-group setting-foot"><button id="check-update" class="subtle">업데이트 확인</button><small class="version">v${__APP_VERSION__}</small></section>
+  <button id="settings-save" class="primary">닫기</button></dialog>
+<dialog id="stats-dialog" class="stats-dialog"><button class="dialog-close icon-button" id="stats-close" aria-label="기록 닫기">${icon('close')}</button><div class="eyebrow">MY RECORD</div><h2 id="stats-title">내 기록</h2><div id="stats-body"></div><button id="stats-done" class="primary">닫기</button></dialog>
 <dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-beams">0</b><span>퇴사빔</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 `;
@@ -77,6 +90,25 @@ const eul = (word: string) => { const code = word.charCodeAt(word.length - 1); r
 const smashed = (name: string, company: string) => `${name}님이 회사 ${company}${eul(company)} 부쉈습니다`;
 function applyCompany() { const company = companyName(); scene?.setName(company); $('scene-caption').querySelector('p')!.textContent = company; }
 companyInput.addEventListener('change', () => { writeStore('boom-company', companyInput.value.trim()); applyCompany(); });
+const notifier = createNotify(API, playerName);
+const stats = loadStats();
+let theme = themeById(readStore('boom-theme', 'default'));
+// Time-of-day greeting so the landing page feels alive for daily players.
+function greeting() {
+  const now = new Date(); const h = now.getHours(); const day = now.getDay();
+  if (day === 1 && h < 12) return '월요일이네요. 부수고 시작하죠.';
+  if (day === 5 && h >= 15) return '불금! 회사는 두고 가요.';
+  if (h < 5 || h >= 23) return '야근 중이신가요… 15초만 쉬어요.';
+  if (h < 10) return '좋은 아침. 출근 전에 한 판?';
+  if (h < 14) return '점심시간 파괴 타임 🍱';
+  if (h < 18) return '오후 회의, 끝났나요?';
+  return '퇴근하셨어요? 마무리 한 방.';
+}
+$('greeting').textContent = greeting();
+async function loadPlays() {
+  try { const p = await (await fetch(`${API}plays`, { cache: 'no-store' })).json(); $('plays-month').textContent = p.month.toLocaleString(); $('plays-today').textContent = p.today.toLocaleString(); $('plays-total').textContent = p.total.toLocaleString(); }
+  catch { /* the counter is decoration */ }
+}
 const anchors = Array.from({ length: 6 }, (_, i) => {
   const button = document.createElement('button'); button.className = 'target'; button.dataset.index = String(i);
   button.addEventListener('click', () => hit(i)); $('target-layer').append(button); return button;
@@ -102,11 +134,16 @@ $('tab-today').addEventListener('click', () => { tab = 'today'; renderRanking(bo
 $('tab-all').addEventListener('click', () => { tab = 'all'; renderRanking(board); });
 // Daily streak: one stamp per local calendar day you played.
 const today = () => new Date().toLocaleDateString('sv-SE');
-function renderStreak() {
+function computeStreak() {
   let days: string[] = []; try { days = JSON.parse(readStore('boom-days', '[]')); } catch { days = []; }
   const set = new Set(days); let streak = 0; const cursor = new Date();
   if (!set.has(today())) cursor.setDate(cursor.getDate() - 1);
   while (set.has(cursor.toLocaleDateString('sv-SE'))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+  return { streak, set };
+}
+const currentStreak = () => computeStreak().streak;
+function renderStreak() {
+  const { streak, set } = computeStreak();
   const plays = Number(readStore('boom-plays', '0')) || 0;
   $('streak').hidden = !plays;
   $('streak').innerHTML = `${streak > 1 ? `🔥 <b>${streak}일</b> 연속 퇴근 중` : set.has(today()) ? '✅ 오늘 출근 도장 완료' : '🕘 오늘 아직 안 부쉈어요'} · 총 <b>${plays}</b>판`;
@@ -145,7 +182,8 @@ function hit(index: number) {
   sound.unlock(); sound.hit(event.kind, event.broken, game.combo); scene?.hit(index, event.broken, event.kind); buzz(event.broken ? [30, 20, 40] : 12);
   $('quip').textContent = event.broken ? targets[event.kind].quip : ['좋아요, 한 번 더!', '부숴! 부숴!', '아직 안 부서졌어요.', '거의 다 왔어요!'][Math.floor(Math.random() * 4)];
   if (event.points) float(`+${event.points.toLocaleString()}`, anchors[index].style.left, anchors[index].style.top, event.kind === BONUS);
-  if (event.broken) screenFlash(event.kind === BONUS ? 'rgba(255,216,77,.34)' : 'rgba(255,244,219,.16)');
+  if (event.broken) screenFlash(event.kind === BONUS ? 'rgba(255,216,77,.34)' : event.kind === BOSS ? 'rgba(255,102,90,.5)' : 'rgba(255,244,219,.16)');
+  if (event.broken && event.kind === BOSS) { callout('결재 완료! 사장님 퇴근 👋', 'fever'); sound.milestone(2); buzz([80, 40, 120]); }
   if (game.combo === 5) { callout('5 COMBO! ×1.5'); sound.milestone(0); }
   else if (game.combo === 10) { callout('10 COMBO 🔥 ×2', 'hot'); sound.milestone(1); buzz([15, 20, 30]); }
   else if (game.combo === 20) { callout('20 COMBO ⚡ FEVER ×3', 'fever'); sound.milestone(2); buzz([20, 20, 20, 20, 80]); }
@@ -172,7 +210,7 @@ function sync() {
   $('combo').hidden = game.combo < 2 || game.phase !== 'playing'; $('combo').querySelector('strong')!.textContent = String(game.combo);
   $('combo').classList.toggle('hot', game.combo >= 10); $('combo-bar').style.width = `${game.comboLeft / 1.2 * 100}%`;
   anchors.forEach((button, i) => {
-    const slot = game.slots[i]; button.hidden = game.phase !== 'playing' || slot.hp <= 0; button.classList.toggle('bonus', slot.kind === BONUS);
+    const slot = game.slots[i]; button.hidden = game.phase !== 'playing' || slot.hp <= 0; button.classList.toggle('bonus', slot.kind === BONUS); button.classList.toggle('boss', slot.kind === BOSS); button.dataset.kind = String(slot.kind);
     button.setAttribute('aria-label', `${i + 1}번 ${targets[slot.kind].name} · 체력 ${slot.hp}${slot.kind === BONUS ? ` · ${Math.ceil(slot.expires)}초 남음` : ''}`);
     button.innerHTML = `<small>${'●'.repeat(Math.max(0, slot.hp))}</small>${slot.kind === BONUS ? `<em>${slot.expires.toFixed(1)}s</em>` : ''}`;
   });
@@ -180,13 +218,16 @@ function sync() {
 function begin() {
   if (!scene) return;
   writeStore('boom-name', nameInput.value.trim()); writeStore('boom-company', companyInput.value.trim()); applyCompany();
-  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; captured = ''; shownScore = 0; sound.unlock(); sync(); stampToday();
+  game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; bossSeen = false; captured = ''; shownScore = 0; sound.unlock(); sync(); stampToday();
+  fetch(`${API}plays`, { method: 'POST' }).then(r => r.json()).then(p => { $('plays-month').textContent = p.month.toLocaleString(); $('plays-today').textContent = p.today.toLocaleString(); $('plays-total').textContent = p.total.toLocaleString(); }).catch(() => {});
   $('quip').textContent = `사무용품을 터치하면 ${ROUND}초가 시작돼요.`;
   $('arena').scrollIntoView({ behavior: 'instant', block: 'start' });
 }
-function home() { game.reset(); scene?.reset(); sync(); void loadRanking(); window.scrollTo({ top: 0, behavior: 'instant' }); applyUpdate(); }
+function home() { game.reset(); scene?.reset(); sync(); void loadRanking(); void loadPlays(); void loadPlays(); $('greeting').textContent = greeting(); window.scrollTo({ top: 0, behavior: 'instant' }); applyUpdate(); }
+let bossSeen = false;
 // A new build swaps in silently while you are on the landing page; mid-round it waits until you are back home.
 let pendingUpdate: (() => void) | null = null;
+setInterval(() => applyUpdate(), 2000);
 function applyUpdate() {
   if (!pendingUpdate || game.phase !== 'ready' || document.querySelector('dialog[open]')) return;
   const apply = pendingUpdate; pendingUpdate = null; notify('새 버전으로 업데이트하는 중…'); setTimeout(apply, 600);
@@ -204,13 +245,59 @@ $('resume').addEventListener('click', () => { lastTime = performance.now(); game
 $('quit').addEventListener('click', home);
 $('sound').addEventListener('click', () => { sound.muted = !sound.muted; writeStore('boom-muted', sound.muted ? 'yes' : 'no'); if (sound.muted) { sound.fever(false); feverOn = false; } sound.unlock(); soundUI(); });
 const settings = $<HTMLDialogElement>('settings-dialog');
-$('settings').addEventListener('click', () => { game.pause(); sync(); settings.showModal(); });
-$('settings-close').addEventListener('click', () => settings.close());
-$('settings-save').addEventListener('click', () => {
-  writeStore('boom-reduced', String(reduced.checked)); document.body.classList.toggle('reduced-motion', reduced.checked);
-  if (scene) scene.reduced = reduced.checked;
-  settings.close();
+const soundSetting = $<HTMLInputElement>('setting-sound');
+function applyTheme(next: typeof theme) {
+  theme = next; writeStore('boom-theme', theme.id); scene?.setTheme(theme);
+  $('scene-caption').querySelector('.mini-tag')!.textContent = `${theme.emoji} ${theme.name}`;
+  for (const button of $('theme-grid').querySelectorAll('button')) { const on = button.dataset.theme === theme.id; button.classList.toggle('selected', on); button.setAttribute('aria-checked', String(on)); }
+}
+$('theme-grid').innerHTML = themes.map(t => `<button type="button" role="radio" data-theme="${t.id}" aria-checked="false"><span class="theme-emoji">${t.emoji}</span><b>${t.name}</b><small>${t.desc}</small></button>`).join('');
+$('theme-grid').addEventListener('click', event => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-theme]'); if (button) { applyTheme(themeById(button.dataset.theme!)); sound.unlock(); sound.milestone(0); } });
+const notifyToggle = $<HTMLInputElement>('notify-toggle'); const notifyTime = $<HTMLInputElement>('notify-time');
+async function refreshNotify(extra?: string) {
+  const state = await notifier.state();
+  notifyToggle.checked = state.enabled; notifyToggle.disabled = !state.supported; notifyTime.disabled = !state.supported; if (!state.enabled) notifyTime.value = notifyTime.value || state.time; else notifyTime.value = state.time;
+  $('notify-body').hidden = !state.enabled; $('notify-consent').hidden = true;
+  $('notify-status').textContent = extra ?? (state.enabled ? `매일 ${state.time}에 알림이 와요 ✅ (이 기기 기준)` : state.reason ?? (state.permission === 'denied' ? '브라우저에서 알림이 차단돼 있어요. 주소창 자물쇠 → 알림 허용 후 다시 켜 주세요.' : '켜면 하루 한 번, 정한 시간에 "회사 터뜨리러 갈 시간" 알림을 보내요.'));
+}
+notifyToggle.addEventListener('change', async () => {
+  if (notifyToggle.checked) { notifyToggle.checked = false; $('notify-consent').hidden = false; $('notify-consent').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  else { notifyToggle.disabled = true; try { await notifier.disable(); await refreshNotify('알림을 껐어요.'); } finally { notifyToggle.disabled = false; } }
 });
+$('notify-cancel').addEventListener('click', () => { $('notify-consent').hidden = true; });
+$('notify-agree').addEventListener('click', async () => {
+  const button = $<HTMLButtonElement>('notify-agree'); button.disabled = true; $('notify-status').textContent = '브라우저 권한을 확인하는 중…';
+  try { const state = await notifier.enable(notifyTime.value || '17:50'); await refreshNotify(state.enabled ? `켰어요! 매일 ${state.time}에 알림이 와요 ✅ 테스트 알림으로 확인해 보세요.` : state.reason); if (state.enabled) notify('퇴근 알림을 켰어요 🔔'); }
+  catch { await refreshNotify('알림 등록에 실패했어요. 잠시 후 다시 시도해 주세요.'); }
+  finally { button.disabled = false; }
+});
+notifyTime.addEventListener('change', async () => { if (!notifyToggle.checked) return; try { const state = await notifier.enable(notifyTime.value); await refreshNotify(state.enabled ? `알림 시간을 ${state.time}으로 바꿨어요 ✅` : state.reason); } catch { await refreshNotify('시간 변경에 실패했어요.'); } });
+$('notify-test').addEventListener('click', async () => { const b = $<HTMLButtonElement>('notify-test'); b.disabled = true; try { $('notify-status').textContent = (await notifier.test()) ? '테스트 알림을 보냈어요. 몇 초 안에 도착해요 📬' : '먼저 알림을 켜 주세요.'; } catch { $('notify-status').textContent = '테스트 발송에 실패했어요.'; } finally { b.disabled = false; } });
+$('check-update').addEventListener('click', async () => {
+  const registration = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
+  if (!registration) { notify('설치된 앱이 아니면 새로고침으로 최신 버전을 받아요.'); return; }
+  await registration.update().catch(() => {});
+  setTimeout(() => { if (pendingUpdate) { settings.close(); home(); } else notify(`이미 최신 버전이에요 · v${__APP_VERSION__}`); }, 1500);
+});
+$('settings').addEventListener('click', () => { game.pause(); sync(); soundSetting.checked = !sound.muted; void refreshNotify(); settings.showModal(); });
+$('settings-close').addEventListener('click', () => settings.close());
+soundSetting.addEventListener('change', () => { sound.muted = !soundSetting.checked; writeStore('boom-muted', sound.muted ? 'yes' : 'no'); if (sound.muted) { sound.fever(false); feverOn = false; } sound.unlock(); soundUI(); });
+reduced.addEventListener('change', () => { writeStore('boom-reduced', String(reduced.checked)); document.body.classList.toggle('reduced-motion', reduced.checked); if (scene) scene.reduced = reduced.checked; });
+$('settings-save').addEventListener('click', () => settings.close());
+// Stats dialog
+const statsDialog = $<HTMLDialogElement>('stats-dialog');
+function renderStats() {
+  const s = stats; const streak = currentStreak(); const avg = s.history.length ? Math.round(s.history.reduce((a, r) => a + r.score, 0) / s.history.length) : 0;
+  $('stats-title').textContent = `${playerName()}님의 기록`;
+  $('stats-body').innerHTML = `
+    <div class="stat-grid"><div><b>${s.plays.toLocaleString()}</b><span>총 판수</span></div><div><b>${s.destroyed.toLocaleString()}</b><span>부순 스트레스</span></div><div><b>${s.beams.toLocaleString()}</b><span>퇴사빔</span></div><div><b>${s.bestScore.toLocaleString()}</b><span>최고 점수</span></div><div><b>${s.bestCombo}</b><span>최고 콤보</span></div><div><b>${streak}</b><span>연속 일수</span></div></div>
+    ${s.percentile ? `<p class="stat-line">전체 플레이어 중 <b>상위 ${s.percentile}%</b> (마지막 판 기준)</p>` : ''}
+    ${s.history.length >= 2 ? `<div class="spark">${sparkline(s.history)}<small>최근 ${Math.min(30, s.history.length)}판 · 평균 ${avg.toLocaleString()}점</small></div>` : '<p class="stat-line">두 판 이상 하면 점수 그래프가 생겨요.</p>'}
+    <h3 class="stat-h">칭호 ${s.badges.length}/${Object.keys(BADGES).length}</h3>
+    <ul class="badges">${Object.entries(BADGES).map(([id, b]) => `<li class="${s.badges.includes(id) ? 'got' : ''}"><b>${s.badges.includes(id) ? '🏅' : '🔒'} ${b.name}</b><small>${b.hint}</small></li>`).join('')}</ul>`;
+}
+$('stats-open').addEventListener('click', () => { renderStats(); statsDialog.showModal(); });
+$('stats-close').addEventListener('click', () => statsDialog.close()); $('stats-done').addEventListener('click', () => statsDialog.close());
 $('reload').addEventListener('click', () => location.reload());
 const result = $<HTMLDialogElement>('result-dialog');
 function showResult() {
@@ -221,8 +308,10 @@ function showResult() {
   $('new-record').hidden = !isBest; $('best-score').textContent = best.toLocaleString();
   $('result-position').textContent = '랭킹 등록 중…';
   try { captured = scene?.capture() || ''; } catch { captured = ''; }
+  const earned = recordRound(stats, { at: Date.now(), score: game.score, combo: game.maxCombo, destroyed: game.destroyed, beams: game.beams, boss: game.bossKilled, rank: game.rank }, currentStreak());
+  if (earned.length) setTimeout(() => notify(`🏅 칭호 획득: ${earned.map(id => BADGES[id].name).join(', ')}`), 900);
   sound.celebrate(); result.showModal();
-  submitScore().then(data => { $('result-position').innerHTML = `오늘 <b>${data.todayPosition}위</b> / ${data.todayTotal.toLocaleString()}명 · 전체 <b>${data.position}위</b> / ${data.total.toLocaleString()}명`; renderRanking(data); })
+  submitScore().then(data => { $('result-position').innerHTML = `오늘 <b>${data.todayPosition}위</b> / ${data.todayTotal.toLocaleString()}명 · 전체 <b>${data.position}위</b> / ${data.total.toLocaleString()}명`; renderRanking(data); stats.percentile = Math.max(1, Math.round(data.position / Math.max(1, data.total) * 100)); saveStats(stats); })
     .catch(() => { $('result-position').textContent = '랭킹 서버에 연결하지 못했어요. 기록은 이 기기에 남아요.'; });
 }
 $('replay').addEventListener('click', () => { result.close(); begin(); });
@@ -261,11 +350,13 @@ $('save-card').addEventListener('click', async () => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) { game.pause(); sync(); void sound.context?.suspend(); } lastTime = performance.now(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && game.phase === 'playing') { game.pause(); sync(); } });
 setupPwa(notify, apply => { pendingUpdate = apply; applyUpdate(); });
-sync(); void loadRanking();
+sync(); void loadRanking(); void loadPlays();
+// QA hook: ?debug exposes the game state so scripted tests can force rare states (boss, fever) deterministically.
+if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __boom: Game }).__boom = game;
 try {
   scene = new OfficeScene($('scene'), hit); scene.reduced = reduced.checked; document.body.classList.toggle('reduced-motion', reduced.checked);
   scene.onEvent = event => { if (event === 'crash') { sound.crash(); buzz(40); } };
-  applyCompany();
+  applyTheme(theme); applyCompany();
   $('loading').hidden = true; $<HTMLButtonElement>('start').disabled = false; $('start-label').textContent = '터뜨리러 가기';
   scene.renderer.domElement.addEventListener('webglcontextlost', event => { event.preventDefault(); game.pause(); sync(); notify('그래픽 연결이 끊겼어요. 복구를 기다려 주세요.'); });
   scene.renderer.domElement.addEventListener('webglcontextrestored', () => { location.reload(); });
@@ -278,6 +369,8 @@ function frame(now: number) {
     const golden = game.phase === 'playing' && game.slots.some(slot => slot.kind === BONUS && slot.hp > 0);
     if (golden && !goldenShown) { sound.bonus(); buzz(25); $('quip').textContent = '⚡ 긴급 수정 요청 등장! 4초 안에 부수면 800점!'; }
     goldenShown = golden;
+    const boss = game.phase === 'playing' && game.slots.some(slot => slot.kind === BOSS && slot.hp > 0);
+    if (boss && !bossSeen) { bossSeen = true; sound.boss(); buzz([40, 30, 40, 30, 90]); callout('👔 사장님 등장!!', 'fever'); $('quip').textContent = '사장님 결재판! 5대 치면 3,000점 × 배율. 6초 안에!'; screenFlash('rgba(255,102,90,.35)'); }
     if (game.phase === 'finale' && lastPhase !== 'finale') { sound.charge(); $('finale-caption').querySelector('h2')!.textContent = game.rage >= 100 ? '퇴사빔.' : '오늘은 여기까지.'; }
     if (game.phase === 'finale' && game.finaleTime >= .9 && !boomPlayed) { sound.boom(); buzz([80, 30, 120]); boomPlayed = true; screenFlash('rgba(213,252,113,.6)'); }
     scene?.update(dt, game, anchors);

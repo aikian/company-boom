@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, targets, BONUS, BONUS_EVERY, BONUS_LIFE, BEAM_BONUS, RAGE_BREAK, RAGE_HIT, ROUND, multiplier } from '../src/game.ts';
+import { Game, targets, BONUS, BOSS, BOSS_LIFE, BONUS_EVERY, BONUS_LIFE, BEAM_BONUS, RAGE_BREAK, RAGE_HIT, ROUND, multiplier } from '../src/game.ts';
 
 const smash = (game: Game, index: number) => { let last = null; while (game.slots[index].hp > 0) last = game.hit(index); return last!; };
 const advance = (game: Game, seconds: number, step = .05) => { for (let t = 0; t < seconds - 1e-9; t += step) game.tick(Math.min(step, seconds - t)); };
@@ -152,5 +152,36 @@ test('reset returns to a fresh round and ignores bad delta times', () => {
 test('rank thresholds follow the plan', () => {
   const game = new Game();
   for (const [score, rank] of [[0, '오늘도 참은 사람'], [4999, '오늘도 참은 사람'], [5000, '회의실의 재앙'], [12000, '정시 퇴근 수호자'], [22000, '전설의 퇴사자']] as const) { game.score = score; assert.equal(game.rank, rank); }
-  assert.equal(targets.length, 4);
+  assert.equal(targets.length, 5);
+});
+
+test('a beam fired at 20+ combo summons the boss once; it is worth 3000 x multiplier and expires', () => {
+  const game = new Game(); game.start();
+  // Build a 20+ combo without breaking anything too fast: alternate printer/desk hits.
+  let guard = 0;
+  while (game.combo < 20 && guard++ < 100) { const i = live(game).find(i => game.slots[i].kind !== BONUS && game.slots[i].hp > 1) ?? live(game)[0]; game.hit(i); advance(game, .3); }
+  assert.ok(game.combo >= 20);
+  while (game.rage < 100) { game.hit(live(game)[0]); advance(game, .3); }
+  assert.ok(game.combo >= 20, 'still in fever when firing');
+  assert.ok(game.fire());
+  assert.equal(game.bossPending, true); assert.equal(game.bossShown, true);
+  advance(game, .6);
+  const boss = game.slots.findIndex(slot => slot.kind === BOSS);
+  assert.ok(boss >= 0, 'boss took the first respawned slot');
+  assert.equal(game.slots[boss].hp, 5); assert.ok(game.slots[boss].expires > BOSS_LIFE - .7);
+  const before = game.score; const combo = game.combo;
+  const event = smash(game, boss);
+  assert.equal(event.kind, BOSS); assert.equal(event.points, 3000 * multiplier(combo + 5)); assert.equal(game.score, before + event.points);
+  assert.equal(game.bossKilled, true);
+  chargeToFull(game); game.fire(); advance(game, .6);
+  assert.equal(game.slots.findIndex(slot => slot.kind === BOSS), -1, 'only one boss per round');
+  game.reset(); assert.equal(game.bossShown, false); assert.equal(game.bossKilled, false);
+});
+
+test('an unclaimed boss vanishes after 6 seconds and the slot returns to its cycle', () => {
+  const game = new Game(); game.start();
+  game.bossPending = true; game.hit(0); advance(game, .4);
+  const boss = game.slots.findIndex(slot => slot.kind === BOSS); assert.ok(boss >= 0);
+  advance(game, BOSS_LIFE + .1);
+  assert.notEqual(game.slots[boss].kind, BOSS); assert.equal(game.bossKilled, false);
 });

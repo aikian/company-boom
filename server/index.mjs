@@ -5,6 +5,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { createGzip } from 'node:zlib';
 import { dayStart, insert, positionOf, since, top, validate } from './scores.mjs';
+import { clampOffset, clampTime, createPush } from './push.mjs';
+import { createPlays } from './plays.mjs';
 
 const PORT = Number(process.env.PORT || 80);
 const ROOT = resolve(process.env.STATIC_DIR || 'dist');
@@ -12,6 +14,11 @@ const DATA_DIR = resolve(process.env.DATA_DIR || '/data');
 const BASE = (process.env.BASE_PATH || '/boomcompany/').replace(/\/?$/, '/');
 const FILE = join(DATA_DIR, 'scores.json');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2' };
+
+const PUBLIC_URL = process.env.PUBLIC_URL || 'https://sub.uxo.kr/boomcompany/';
+const push = createPush({ dataDir: DATA_DIR, subject: PUBLIC_URL });
+const plays = createPlays({ dataDir: DATA_DIR });
+await push.load(); await plays.load(); push.start(); plays.start();
 
 let scores = [];
 let saving = Promise.resolve();
@@ -35,7 +42,39 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+async function readJson(req, res) {
+  const chunks = []; let size = 0;
+  for await (const chunk of req) { chunks.push(chunk); size += chunk.length; if (size > 8192) { json(res, 413, { error: 'too large' }); return undefined; } }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { json(res, 400, { error: 'invalid json' }); return undefined; }
+}
+
 async function api(req, res, path) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  if (path === 'plays') {
+    if (req.method === 'GET') return json(res, 200, plays.summary());
+    if (req.method === 'POST') { if (limited(ip)) return json(res, 429, { error: 'too many' }); return json(res, 201, plays.record()); }
+    return json(res, 405, { error: 'method not allowed' });
+  }
+  if (path === 'push/key') return json(res, 200, { key: push.publicKey, subscribers: push.count });
+  if (path === 'push/subscribe' && req.method === 'POST') {
+    if (limited(ip)) return json(res, 429, { error: 'too many' });
+    const body = await readJson(req, res); if (body === undefined) return;
+    const sub = body?.subscription; const time = clampTime(body?.time); const offset = clampOffset(body?.offset);
+    if (!sub?.endpoint || !sub?.keys?.p256dh || !sub?.keys?.auth || !time || offset === null || !/^https:\/\//.test(sub.endpoint)) return json(res, 400, { error: 'invalid subscription' });
+    await push.upsert(sub, time, offset, body?.name);
+    return json(res, 201, { ok: true, time, subscribers: push.count });
+  }
+  if (path === 'push/unsubscribe' && req.method === 'POST') {
+    const body = await readJson(req, res); if (body === undefined) return;
+    if (typeof body?.endpoint !== 'string') return json(res, 400, { error: 'invalid' });
+    await push.remove(body.endpoint); return json(res, 200, { ok: true });
+  }
+  if (path === 'push/test' && req.method === 'POST') {
+    if (limited(ip)) return json(res, 429, { error: 'too many' });
+    const body = await readJson(req, res); if (body === undefined) return;
+    const ok = typeof body?.endpoint === 'string' && await push.test(body.endpoint);
+    return json(res, ok ? 200 : 404, { ok });
+  }
   if (path !== 'scores') return json(res, 404, { error: 'not found' });
   if (req.method === 'GET') { const today = since(scores, dayStart()); return json(res, 200, { top: top(scores, 10), total: scores.length, today: top(today, 10), todayTotal: today.length }); }
   if (req.method === 'DELETE') {
@@ -45,12 +84,8 @@ async function api(req, res, path) {
     scores = []; await persist(); return json(res, 200, { top: [], total: 0 });
   }
   if (req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
-  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   if (limited(ip)) return json(res, 429, { error: 'too many submissions' });
-  const chunks = []; let size = 0;
-  for await (const chunk of req) { chunks.push(chunk); size += chunk.length; if (size > 4096) return json(res, 413, { error: 'too large' }); }
-  let body;
-  try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return json(res, 400, { error: 'invalid json' }); }
+  const body = await readJson(req, res); if (body === undefined) return;
   const entry = validate(body);
   if (!entry) return json(res, 400, { error: 'invalid score' });
   const result = insert(scores, entry); scores = result.list; await persist();

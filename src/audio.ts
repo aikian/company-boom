@@ -106,5 +106,6 @@ export class Sound {
       for (const osc of oscillators) osc.stop(ctx.currentTime + .55);
     }
   }
+  boss() { this.tone(40, 38, 1.2, .7, 'sawtooth'); this.tone(80, 76, 1.2, .35, 'square'); for (let i = 0; i < 3; i++) this.noise(.12, .6, 'lowpass', 900, 200, 1, i * .28); this.tone(220, 110, .5, .3, 'triangle', .9); }
   celebrate() { for (const [i, f] of [523, 659, 784, 1047].entries()) this.tone(f, f, .45, .18, 'triangle', i * .13); this.noise(.5, .25, 'highpass', 3000, 8000, .5, .5); }
 }
