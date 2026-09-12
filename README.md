@@ -5,7 +5,24 @@
 **생일 선물로 시작하는, 45초짜리 3D 직장인 스트레스 해소 웹게임.**
 가상의 사무실에서 야근·회의·수정 요청을 부수고, 마지막에는 거대한 퇴사빔으로 건물을 종이 조각처럼 날린다.
 
-이 저장소는 기획 단계다. 현재 공개 파일은 이 문서 하나이며, 게임 구현과 서비스 배포는 다음 단계다.
+**현재 상태: MVP 구현 완료.** Vite + TypeScript + Three.js로 준비 → 플레이 → 퇴사빔 → 결과 카드까지 전체 흐름이 동작하며, Dockerfile(nginx 정적 서빙)로 Coolify에 배포한다.
+
+```bash
+npm ci            # 의존성 설치
+npm run dev       # 개발 서버 (http://localhost:5173)
+npm test          # 점수·콤보·분노·종료 규칙 로직 테스트
+npm run build     # tsc 검사 → dist 빌드 → 오프라인 서비스 워커 생성
+node scripts/make-icons.mjs   # PWA 아이콘·소셜 미리보기 PNG 재생성 (Playwright Chromium 필요)
+```
+
+| 경로 | 역할 |
+| --- | --- |
+| `src/game.ts` | 렌더러 없는 순수 게임 규칙 (`GameSession`) |
+| `src/scene.ts` | Three.js 3D 사무실·파편·퇴사빔·케이크/퇴근 도장 연출 |
+| `src/main.ts` | HTML HUD, 입력, 결과 카드 PNG, 공유, 설정 |
+| `src/audio.ts` | Web Audio 합성 효과음 |
+| `src/pwa.ts` | 설치 안내, 서비스 워커 등록, localStorage 래퍼 |
+| `tests/game.test.ts` | 아래 "반드시 확인할 시나리오" 1~5번의 로직 검증 |
 
 **제작 방향: 기술적으로 탄탄하고, 시각적으로 풍부한 플레이 가능한 3D 디오라마.** 층별 사무실, 반응하는 조명, 재질별 파편, 직접 만든 효과 셰이더와 피날레 카메라 연출을 첫 출시의 핵심으로 삼는다.
 

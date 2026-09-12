@@ -1,0 +1,12 @@
+{
+  "id": "/", "name": "회사 터뜨리기", "short_name": "회사 터뜨리기",
+  "description": "45초의 짜릿한 퇴근. 3D 직장인 스트레스 해소 게임.",
+  "lang": "ko", "start_url": "/?source=pwa", "scope": "/",
+  "display": "standalone", "background_color": "#14171c", "theme_color": "#14171c",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
