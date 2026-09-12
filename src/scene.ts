@@ -6,7 +6,13 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Game, targets } from './game';
 
-type Piece = { position: THREE.Vector3; velocity: THREE.Vector3; rotation: THREE.Euler; spin: number; size: number; life: number; paper: boolean };
+type Piece = { position: THREE.Vector3; velocity: THREE.Vector3; rotation: THREE.Euler; spin: THREE.Vector3; dims: THREE.Vector3; life: number; paper: boolean };
+type Flash = { sprite: THREE.Sprite; life: number; maxLife: number; size: number };
+type Ring = { mesh: THREE.Mesh; life: number };
+export type SceneEvent = 'crash';
+const WINDOW = 0x36494b; const BROKEN_WINDOW = 0x171d21;
+const rand = (spread: number) => (Math.random() - .5) * spread;
+
 export class OfficeScene {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -14,19 +20,23 @@ export class OfficeScene {
   building = new THREE.Group();
   floors: THREE.Group[] = [];
   targetGroups: THREE.Group[] = [];
-  cake = new THREE.Group();
   stamp = new THREE.Group();
   particles: THREE.InstancedMesh;
   pieces: Piece[] = [];
   composer: EffectComposer;
   bloom: UnrealBloomPass;
-  point = new THREE.PointLight(0xd8ff80, 0, 15);
+  point = new THREE.PointLight(0xffd84d, 0, 16);
   beam: THREE.Mesh;
   ring: THREE.Mesh;
   sign: THREE.Mesh;
+  windows: THREE.Mesh[] = [];
+  props: THREE.Mesh[] = [];
+  flashes: Flash[] = [];
+  rings: Ring[] = [];
   targetKinds = [-1, -1, -1, -1, -1, -1];
   kicks = [0, 0, 0, 0, 0, 0];
-  clock = 0; exploded = false; reduced = false; birthday = false; quality = 1;
+  clock = 0; stage = 0; reduced = false; quality = 1; shake = 0; hitstop = 0; damage = 0;
+  onEvent?: (event: SceneEvent) => void;
   private probeFrames = 0; private probeTime = 0;
   private dummy = new THREE.Object3D();
   private meshes = new Map<string, THREE.BufferGeometry>();
@@ -35,6 +45,8 @@ export class OfficeScene {
   private pickMeshes: THREE.Mesh[] = [];
   private resizeObserver: ResizeObserver;
   private project = new THREE.Vector3();
+  private look = new THREE.Vector3(0, 2.2, 0);
+  private tmp = new THREE.Vector3();
   private size = { w: 1, h: 1 };
   constructor(public container: HTMLElement, public onHit: (index: number) => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
@@ -46,8 +58,8 @@ export class OfficeScene {
     this.renderer.toneMappingExposure = 1.25;
     this.renderer.domElement.setAttribute('aria-label', '3층짜리 미니어처 사무실. 표적 버튼을 눌러 부술 수 있습니다.');
     container.prepend(this.renderer.domElement);
-    this.camera.position.set(10, 8.2, 14);
-    this.camera.lookAt(0, 2.6, 0);
+    this.camera.position.set(11, 9, 15.4);
+    this.camera.lookAt(this.look);
     this.scene.add(new THREE.HemisphereLight(0xe6e5ff, 0x3a354f, 2.8));
     const sun = new THREE.DirectionalLight(0xffeed0, 4.5); sun.position.set(-3, 10, 7); sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -7; sun.shadow.camera.right = 7; sun.shadow.camera.top = 9; sun.shadow.camera.bottom = -6;
@@ -59,7 +71,7 @@ export class OfficeScene {
     this.scene.add(this.building);
     this.box(this.building, [8.2, .32, 5.2], [0, -.12, 0], 0x313b3e, .15);
     this.box(this.building, [7.9, .08, 4.9], [0, .08, 0], 0x5b6870);
-    // The model is assembled from shared low-poly geometry and materials.
+    // The model is assembled from shared low-poly geometry; every box remembers its size so it can fly apart later.
     for (let floor = 0; floor < 3; floor++) {
       const group = new THREE.Group(); group.position.y = floor * 1.8 + .18; this.building.add(group); this.floors.push(group);
       this.box(group, [6.6, .22, 3.8], [0, 0, 0], 0xe5dece);
@@ -70,7 +82,7 @@ export class OfficeScene {
       }
       this.box(group, [6.5, .12, .14], [0, 1.58, -1.6], 0xf9e8a2);
       for (const x of [-2.15, -.72, .72, 2.15]) {
-        this.box(group, [1.12, .77, .05], [x, 1.03, -1.68], 0x36494b);
+        this.windows.push(this.box(group, [1.12, .77, .05], [x, 1.03, -1.68], WINDOW));
         this.box(group, [.025, .8, .06], [x, 1.03, -1.64], 0xc2d4c5);
         this.box(group, [1.12, .025, .06], [x, 1.03, -1.64], 0xc2d4c5);
       }
@@ -81,16 +93,16 @@ export class OfficeScene {
         const target = new THREE.Group(); target.position.set(side === 0 ? -1.5 : 1.45, .18, .18);
         group.add(target); this.targetGroups.push(target);
         const pick = new THREE.Mesh(new THREE.BoxGeometry(2.35, 1.25, 2.1), new THREE.MeshBasicMaterial({ visible: false }));
-        pick.position.set(target.position.x, .75, .2); pick.userData.index = index; group.add(pick); this.pickMeshes.push(pick);
+        pick.position.set(target.position.x, .75, .2); pick.userData.index = index; pick.userData.pick = true; group.add(pick); this.pickMeshes.push(pick);
       }
       this.plant(group, 2.6, .12, -1.2, .65);
-      this.box(group, [.45, .7, .42], [-2.6, .44, -1.15], 0xdac79c);
+      this.props.push(this.box(group, [.45, .7, .42], [-2.6, .44, -1.15], 0xdac79c));
     }
     const roof = new THREE.Group(); roof.position.y = 5.68; this.building.add(roof); this.floors.push(roof);
     this.box(roof, [6.8, .26, 4], [0, 0, 0], 0xe7e2d6);
     this.box(roof, [2, .6, 1.3], [1.5, .4, -.4], 0x819194);
     for (let i = 0; i < 6; i++) this.box(roof, [1.65, .04, .07], [1.5, .72, -.87 + i * .18], 0x3d4d51);
-    this.box(roof, [.07, 1.1, .07], [-2.4, .7, -.8], 0xa8b3b0);
+    this.props.push(this.box(roof, [.07, 1.1, .07], [-2.4, .7, -.8], 0xa8b3b0));
     this.box(roof, [.9, .06, .06], [-2.4, 1.14, -.8], 0xa8b3b0);
     this.box(roof, [4.5, .8, .16], [-.4, .69, 1.65], 0x212b2a);
     this.sign = this.label('주식회사 내일부터', '#d5fc71', '#212b2a', 1024, 180);
@@ -98,14 +110,28 @@ export class OfficeScene {
     this.plant(this.building, -3.7, .1, 1.4, 1.2);
     this.plant(this.building, 3.7, .1, -1.35, 1.4);
     for (let i = 0; i < 3; i++) this.box(this.building, [.4, .12, .7], [1.8 + i * .6, .1, 2.25], 0xd7daaf);
+    for (const prop of this.props) prop.userData.rz = prop.rotation.z;
     // A restrained city backdrop gives scale without distracting from the office.
     const city = new THREE.Group(); this.scene.add(city);
     for (let i = 0; i < 12; i++) {
       const h = 1 + ((i * 7) % 5) * .45;
       this.box(city, [.9 + i % 2 * .35, h, 1], [(i - 5.5) * 1.5, h / 2 - .1, -5 - i % 3], 0x242d32);
     }
-    this.particles = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .65 }), 500);
-    this.particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.particles.frustumCulled = false; this.particles.count = 0; this.scene.add(this.particles);
+    this.particles = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: .65 }), 700);
+    this.particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.particles.frustumCulled = false; this.particles.count = 0; this.particles.castShadow = true; this.scene.add(this.particles);
+    const glow = document.createElement('canvas'); glow.width = glow.height = 64;
+    const g = glow.getContext('2d')!; const gradient = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)'); gradient.addColorStop(.35, 'rgba(255,255,255,.55)'); gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gradient; g.fillRect(0, 0, 64, 64);
+    const glowTexture = new THREE.CanvasTexture(glow);
+    for (let i = 0; i < 14; i++) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      sprite.visible = false; this.scene.add(sprite); this.flashes.push({ sprite, life: 0, maxLife: 1, size: 1 });
+    }
+    for (let i = 0; i < 6; i++) {
+      const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, .06, 8, 48), new THREE.MeshBasicMaterial({ color: 0xffd84d, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+      mesh.rotation.x = Math.PI / 2; mesh.visible = false; this.scene.add(mesh); this.rings.push({ mesh, life: 0 });
+    }
     const beamMaterial = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       uniforms: { time: { value: 0 }, opacity: { value: 0 } },
       vertexShader: 'varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
@@ -113,10 +139,9 @@ export class OfficeScene {
     this.beam = new THREE.Mesh(new THREE.CylinderGeometry(.7, 1.4, 20, 32, 1, true), beamMaterial); this.beam.position.set(0, 7, 0); this.beam.visible = false; this.scene.add(this.beam);
     this.ring = new THREE.Mesh(new THREE.TorusGeometry(1, .035, 8, 80), new THREE.MeshBasicMaterial({ color: 0xdbff8c, transparent: true, opacity: 0 }));
     this.ring.rotation.x = Math.PI / 2; this.ring.position.y = 1.5; this.scene.add(this.ring);
-    this.createCake(); this.cake.visible = false; this.scene.add(this.cake);
     this.createStamp(); this.stamp.visible = false; this.scene.add(this.stamp);
     this.composer = new EffectComposer(this.renderer); this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(800, 600), .32, .35, 1.5); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(800, 600), .38, .35, 1.7); this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(container); this.resize();
     this.renderer.domElement.addEventListener('pointerdown', event => {
       const rect = this.renderer.domElement.getBoundingClientRect();
@@ -125,10 +150,11 @@ export class OfficeScene {
     });
   }
   private mat(color: number) { if (!this.materials.has(color)) this.materials.set(color, new THREE.MeshStandardMaterial({ color, roughness: .68 })); return this.materials.get(color)!; }
-  private box(parent: THREE.Group, dimensions: number[], position: number[], color: number, radius = .035) {
+  private box(parent: THREE.Object3D, dimensions: number[], position: number[], color: number, radius = .035) {
     const key = [...dimensions, radius].join('/');
     if (!this.meshes.has(key)) this.meshes.set(key, new RoundedBoxGeometry(dimensions[0], dimensions[1], dimensions[2], 1, radius));
-    const mesh = new THREE.Mesh(this.meshes.get(key), this.mat(color)); mesh.position.set(position[0], position[1], position[2]); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
+    const mesh = new THREE.Mesh(this.meshes.get(key), this.mat(color)); mesh.position.set(position[0], position[1], position[2]);
+    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.dims = dimensions; parent.add(mesh); return mesh;
   }
   private plant(parent: THREE.Group, x: number, y: number, z: number, size: number) {
     const group = new THREE.Group(); group.position.set(x, y, z); group.scale.setScalar(size); parent.add(group);
@@ -151,17 +177,7 @@ export class OfficeScene {
     const canvas = material.map!.image as HTMLCanvasElement; const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#212b2a'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#d5fc71'; ctx.fillText(name, canvas.width / 2, canvas.height / 2, canvas.width * .93); material.map!.needsUpdate = true;
   }
-  private createCake() {
-    for (const [radius, height, y, color] of [[1.1, .15, .2, 0xe9e5d1], [.9, .65, .6, 0xb6a0e2], [.92, .15, .98, 0xffe9be]]) {
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32), this.mat(color)); mesh.position.y = y; this.cake.add(mesh);
-    }
-    for (let i = 0; i < 5; i++) {
-      const x = Math.sin(i * 1.26) * .5; const z = Math.cos(i * 1.26) * .5;
-      this.box(this.cake, [.07, .4, .07], [x, 1.22, z], 0xe9fbaa);
-      const flame = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffdc78 })); flame.scale.y = 1.6; flame.position.set(x, 1.5, z); this.cake.add(flame);
-    }
-  }
-  // Normal mode ends with a leaving-work stamp instead of the birthday cake.
+  // The finale leaves a leaving-work stamp where the building stood.
   private createStamp() {
     const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, .14, 40), this.mat(0xff665a)); plate.position.y = .2; this.stamp.add(plate);
     const inner = new THREE.Mesh(new THREE.CylinderGeometry(.82, .82, .05, 40), this.mat(0xfff0e6)); inner.position.y = .29; this.stamp.add(inner);
@@ -197,34 +213,97 @@ export class OfficeScene {
     this.targetKinds[index] = kind;
   }
   reset() {
-    this.exploded = false; this.pieces.length = 0; this.cake.visible = this.stamp.visible = false; this.beam.visible = false; this.point.intensity = 0;
-    this.floors.forEach((floor, i) => { floor.position.set(0, i === 3 ? 5.68 : i * 1.8 + .18, 0); floor.rotation.set(0, 0, 0); floor.scale.setScalar(1); });
-    this.building.rotation.set(0, 0, 0); this.kicks.fill(0);
+    this.stage = 0; this.pieces.length = 0; this.stamp.visible = false; this.beam.visible = false; this.point.intensity = 0;
+    this.shake = this.hitstop = this.damage = 0; this.building.visible = true; this.building.rotation.set(0, 0, 0);
+    this.building.traverse(object => { object.visible = true; });
+    for (const window of this.windows) { window.material = this.mat(WINDOW); window.rotation.set(0, 0, 0); }
+    for (const prop of this.props) prop.rotation.z = prop.userData.rz;
+    for (const flash of this.flashes) { flash.life = 0; flash.sprite.visible = false; }
+    for (const ring of this.rings) { ring.life = 0; ring.mesh.visible = false; }
+    (this.ring.material as THREE.MeshBasicMaterial).opacity = 0;
+    this.targetKinds.fill(-1); this.kicks.fill(0); this.sign.rotation.z = 0; this.look.set(0, 2.2, 0);
   }
-  burst(position: THREE.Vector3, count: number, color: number, force = 1) {
-    const cap = this.quality === 0 ? 80 : 240;
-    for (let i = 0; i < count && this.pieces.length < cap; i++) {
-      const paper = i % 3 === 0;
-      this.pieces.push({ position: position.clone(), velocity: new THREE.Vector3((Math.random() - .5) * 5, 2 + Math.random() * 4, (Math.random() - .5) * 5).multiplyScalar(force), rotation: new THREE.Euler(Math.random() * 6, Math.random() * 6, 0), spin: (Math.random() - .5) * 10, size: paper ? .15 : .09 + Math.random() * .18, life: 1.2 + Math.random() * 1.2, paper });
-      this.particles.setColorAt(this.pieces.length - 1, new THREE.Color(i % 4 === 0 ? 0xd5fc71 : i % 4 === 1 ? 0xf5e9cd : color));
+  private get cap() { return this.reduced ? 90 : this.quality === 0 ? 220 : 700; }
+  private spawn(position: THREE.Vector3, dims: THREE.Vector3, color: number, velocity: THREE.Vector3, life: number, paper: boolean) {
+    if (this.pieces.length >= this.cap) return;
+    this.pieces.push({ position: position.clone(), velocity, rotation: new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6), spin: new THREE.Vector3(rand(16), rand(16), rand(16)), dims, life, paper });
+    this.particles.setColorAt(this.pieces.length - 1, new THREE.Color(color));
+  }
+  private sparks(position: THREE.Vector3, count: number, color: number, force = 1) {
+    for (let i = 0; i < count; i++) {
+      const size = .05 + Math.random() * .07;
+      this.spawn(position, new THREE.Vector3(size, size, size), i % 3 === 0 ? 0xffffff : i % 3 === 1 ? 0xffd84d : color, new THREE.Vector3(rand(9), 2 + Math.random() * 6, rand(9) + 2).multiplyScalar(force), .45 + Math.random() * .5, false);
     }
-    if (this.particles.instanceColor) this.particles.instanceColor.needsUpdate = true;
+  }
+  private papers(position: THREE.Vector3, count: number) {
+    for (let i = 0; i < count; i++) this.spawn(position, new THREE.Vector3(.2 + Math.random() * .12, .012, .28), i % 2 ? 0xf5f0e0 : 0xffd48b, new THREE.Vector3(rand(5), 3 + Math.random() * 4, rand(5) + 1.5), 2.2 + Math.random() * 1.8, true);
+  }
+  // Turns one modelled box into a flying chunk with the same size and colour, then hides the original.
+  private shatterMesh(mesh: THREE.Mesh, center: THREE.Vector3, force: number) {
+    const dims = mesh.userData.dims as number[] | undefined;
+    if (mesh.userData.pick) return;
+    mesh.visible = false;
+    if (!dims) return;
+    const position = mesh.getWorldPosition(new THREE.Vector3()); const scale = mesh.getWorldScale(this.tmp);
+    const size = new THREE.Vector3(dims[0] * scale.x, dims[1] * scale.y, dims[2] * scale.z);
+    const direction = position.clone().sub(center); direction.y = 0;
+    if (direction.lengthSq() < 1e-4) direction.set(rand(1), 0, rand(1)); direction.normalize();
+    const mass = Math.min(size.x * size.y * size.z, 2);
+    const kick = (2.5 + Math.random() * 3.5) * force / (.4 + mass * 2);
+    const velocity = new THREE.Vector3(direction.x * kick + rand(2), (2.5 + Math.random() * 4) * force / (.6 + mass), direction.z * kick + rand(2) + 1.2 * force);
+    this.spawn(position, size, (mesh.material as THREE.MeshStandardMaterial).color.getHex(), velocity, 2.4 + Math.random() * 2.2, size.y < .06 && Math.max(size.x, size.z) > .3);
+  }
+  private shatter(root: THREE.Object3D, force = 1) {
+    root.updateWorldMatrix(true, true);
+    const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
+    const list: THREE.Mesh[] = [];
+    root.traverse(object => { if ((object as THREE.Mesh).isMesh && object.visible) list.push(object as THREE.Mesh); });
+    for (const mesh of list) this.shatterMesh(mesh, center, force);
+    return center;
+  }
+  private flash(position: THREE.Vector3, size: number, color: number, life = .16) {
+    const flash = this.flashes.find(f => f.life <= 0) ?? this.flashes[0];
+    flash.life = flash.maxLife = life; flash.size = size; flash.sprite.visible = true; flash.sprite.position.copy(position);
+    (flash.sprite.material as THREE.SpriteMaterial).color.set(color).multiplyScalar(3);
+  }
+  private shockwave(position: THREE.Vector3, color: number) {
+    const ring = this.rings.find(r => r.life <= 0) ?? this.rings[0];
+    ring.life = .45; ring.mesh.visible = true; ring.mesh.position.copy(position); (ring.mesh.material as THREE.MeshBasicMaterial).color.set(color);
+  }
+  private wreck() {
+    this.damage++;
+    const intact = this.windows.filter(window => window.material === this.mat(WINDOW));
+    if (intact.length) { const window = intact[Math.floor(Math.random() * intact.length)]; window.material = this.mat(BROKEN_WINDOW); window.rotation.z = rand(.16); }
+    const prop = this.props[Math.floor(Math.random() * this.props.length)]; prop.rotation.z = THREE.MathUtils.clamp(prop.rotation.z + rand(.9), -.7, .7);
   }
   hit(index: number, broken: boolean, kind: number) {
-    this.kicks[index] = 1; this.point.intensity = broken ? 12 : 5;
-    this.point.color.set(targets[kind].color);
-    const origin = this.targetGroups[index].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .65, .6));
-    this.burst(origin, this.reduced ? 3 : broken ? 22 : 5, targets[kind].color);
+    const color = targets[kind].color; const group = this.targetGroups[index];
+    this.kicks[index] = 1; this.point.intensity = broken ? 16 : 6; this.point.color.set(color);
+    const origin = group.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .6, .5));
+    const few = this.reduced || this.quality === 0;
+    if (broken) {
+      this.shatter(group, 1.1);
+      this.sparks(origin, few ? 6 : 16, color, 1.2); this.papers(origin, few ? 3 : kind === 0 ? 14 : 6);
+      this.flash(origin, 2.8, color, .2); this.shockwave(origin, color); this.wreck();
+      if (!this.reduced) { this.shake += .9; this.hitstop = .045; }
+    } else {
+      // Knock a loose part off so damage is visible before the target finally breaks.
+      const parts = group.children.filter((child, i) => i > 2 && child.visible) as THREE.Mesh[];
+      if (parts.length) this.shatterMesh(parts[Math.floor(Math.random() * parts.length)], group.getWorldPosition(this.tmp.clone()), .8);
+      this.sparks(origin, few ? 3 : 7, color, .8); this.flash(origin, 1.4, color, .12);
+      if (!this.reduced) this.shake += .3;
+    }
   }
   resize() {
     this.size.w = this.container.clientWidth; this.size.h = this.container.clientHeight;
     this.camera.aspect = this.size.w / Math.max(this.size.h, 1);
-    this.camera.fov = this.camera.aspect < .85 ? 44 : 35; this.camera.updateProjectionMatrix();
+    this.camera.fov = this.camera.aspect < .85 ? 48 : 35; this.camera.updateProjectionMatrix();
     this.renderer.setSize(this.size.w, this.size.h); this.composer.setSize(this.size.w, this.size.h);
   }
   update(dt: number, game: Game, anchors: HTMLButtonElement[]) {
-    const motionDt = Math.min(dt, .05); this.clock += motionDt;
+    let motionDt = Math.min(dt, .05); this.clock += motionDt;
     if (game.phase === 'paused') { this.render(); return; }
+    if (this.hitstop > 0) { this.hitstop -= dt; motionDt = 0; }
     this.probeTime += dt; this.probeFrames++;
     if (this.probeTime > 3 && this.probeFrames > 20) {
       if (this.probeTime / this.probeFrames > .024 && this.quality > 0) { this.quality = 0; this.bloom.enabled = false; this.renderer.shadowMap.enabled = false; this.renderer.setPixelRatio(1); this.resize(); }
@@ -233,10 +312,10 @@ export class OfficeScene {
     for (let i = 0; i < 6; i++) {
       const slot = game.slots[i]; const group = this.targetGroups[i];
       if (slot.kind !== this.targetKinds[i]) this.createTarget(i, slot.kind);
-      group.visible = slot.hp > 0 && !this.exploded;
+      group.visible = slot.hp > 0 && this.stage === 0;
       this.kicks[i] *= Math.exp(-motionDt * 13);
-      group.scale.set(1 + this.kicks[i] * .13, 1 - this.kicks[i] * .19, 1 + this.kicks[i] * .1);
-      group.rotation.z = Math.sin(this.clock * 60) * this.kicks[i] * .07;
+      group.scale.set(1 + this.kicks[i] * .16, 1 - this.kicks[i] * .24, 1 + this.kicks[i] * .12);
+      group.rotation.z = Math.sin(this.clock * 60) * this.kicks[i] * .09;
       group.getWorldPosition(this.project); this.project.y += .35; this.project.z += .9; this.project.project(this.camera);
       anchors[i].style.left = `${(this.project.x * .5 + .5) * this.size.w}px`;
       anchors[i].style.top = `${(-this.project.y * .5 + .5) * this.size.h}px`;
@@ -245,44 +324,64 @@ export class OfficeScene {
     let distance = 1;
     if (finale) {
       const t = game.finaleTime;
-      distance = this.reduced ? 1 : t < .9 ? 1 - .07 * Math.min(t / .6, 1) : 1 + Math.min((t - .9) / 2, 1) * .1;
+      distance = this.reduced ? 1 : t < .9 ? 1 - .08 * Math.min(t / .6, 1) : 1 + Math.min((t - .9) / 2, 1) * .14;
       this.beam.visible = t > .6 && t < 2.4;
       const material = this.beam.material as THREE.ShaderMaterial; material.uniforms.time.value = this.clock;
       material.uniforms.opacity.value = Math.min(1, Math.max(0, (2.4 - t) / .7));
       this.beam.scale.x = this.beam.scale.z = .3 + game.rage / 100;
-      this.point.intensity = t < .9 ? t * 30 : Math.max(0, 25 - t * 8);
-      if (t >= .9 && !this.exploded) {
-        this.exploded = true;
-        for (let i = 0; i < 6; i++) this.burst(this.targetGroups[i].getWorldPosition(new THREE.Vector3()), this.reduced ? 4 : 30, targets[i % 3].color, 1.5);
+      this.point.intensity = t < .9 ? t * 30 : Math.max(0, 30 - t * 8);
+      // The beam strips the building top-down: roof, three floors, then the base and everything left.
+      const stages = game.rage >= 100 ? 5 : Math.max(1, Math.round(game.rage / 25));
+      const order = [this.floors[3], this.floors[2], this.floors[1], this.floors[0], this.building];
+      while (this.stage < stages && t >= .9 + this.stage * .14) {
+        const center = this.shatter(order[this.stage], 1.5 + game.rage / 100); order[this.stage].visible = false;
+        this.sparks(center, this.reduced ? 4 : 24, 0xd5fc71, 2); this.papers(center, this.reduced ? 4 : 18);
+        this.flash(center, 5, 0xe0c8ff, .3); this.shockwave(center, 0xb8a4ff);
+        if (!this.reduced) this.shake += .8;
+        this.stage++; this.onEvent?.('crash');
       }
-      if (this.exploded) {
-        this.floors.forEach((floor, i) => {
-          const p = Math.max(0, t - .9 - i * .12);
-          floor.position.x = (i % 2 ? -1 : 1) * p * (this.reduced ? .2 : 2.5);
-          floor.position.y = (i === 3 ? 5.68 : i * 1.8 + .18) + p * 2 - p * p * 2;
-          floor.rotation.z = this.reduced ? 0 : p * (i % 2 ? -.3 : .3);
-          floor.scale.setScalar(Math.max(0, 1 - Math.max(0, p - .3) * .7));
-        });
-        this.ring.scale.setScalar(1 + Math.max(0, t - .9) * 9);
-        (this.ring.material as THREE.MeshBasicMaterial).opacity = this.reduced ? 0 : Math.max(0, 1 - (t - .9) * 1.5);
-      }
-      const prop = this.birthday ? this.cake : this.stamp;
-      prop.visible = t > 2.7; prop.scale.setScalar(Math.min(1, Math.max(0, (t - 2.7) * 2.5)));
-      prop.rotation.y = this.reduced ? 0 : this.clock * .25;
+      if (t >= .9) { this.ring.scale.setScalar(1 + (t - .9) * 9); (this.ring.material as THREE.MeshBasicMaterial).opacity = this.reduced ? 0 : Math.max(0, 1 - (t - .9) * 1.5); }
+      this.stamp.position.set(0, -.25, this.building.visible ? 3.6 : 0);
+      this.stamp.visible = t > 2.7; this.stamp.scale.setScalar(Math.min(1, Math.max(0, (t - 2.7) * 2.5)));
+      this.stamp.rotation.y = this.reduced ? 0 : this.clock * .25;
     } else {
       this.point.intensity *= Math.exp(-motionDt * 8);
       this.building.rotation.y = game.phase === 'ready' && !this.reduced ? Math.sin(this.clock * .35) * .025 : 0;
-      this.sign.rotation.z = !this.reduced ? Math.sin(this.clock * 2) * Math.min(game.destroyed / 500, .035) : 0;
+      this.sign.rotation.z = this.reduced ? 0 : Math.sin(this.clock * 2.2) * Math.min(this.damage * .006, .05) - Math.min(this.damage * .005, .08);
     }
-    this.camera.position.set(10 * distance, 8.2 * distance, 14 * distance); this.camera.lookAt(0, 2.6, 0);
+    // The building sits higher on the landing page and drops toward the stamp once it is gone.
+    const lookTarget = finale && !this.building.visible ? 1.1 : game.phase === 'ready' ? 2.2 : 1.85;
+    this.look.y += (lookTarget - this.look.y) * Math.min(1, dt * 3);
+    distance *= 1 - Math.min(this.shake, 1) * .03;
+    this.camera.position.set(11 * distance + rand(this.shake * .7), 9 * distance + rand(this.shake * .6), 15.4 * distance);
+    this.camera.lookAt(this.look); this.shake *= Math.exp(-dt * 7);
+    for (const flash of this.flashes) {
+      if (flash.life <= 0) continue;
+      flash.life -= dt; const k = Math.max(0, flash.life / flash.maxLife);
+      flash.sprite.scale.setScalar(flash.size * (1 + (1 - k) * 1.8)); (flash.sprite.material as THREE.SpriteMaterial).opacity = k * k;
+      if (flash.life <= 0) flash.sprite.visible = false;
+    }
+    for (const ring of this.rings) {
+      if (ring.life <= 0) continue;
+      ring.life -= dt; const k = Math.max(0, ring.life / .45);
+      ring.mesh.scale.setScalar(.3 + (1 - k) * 2.6); (ring.mesh.material as THREE.MeshBasicMaterial).opacity = k;
+      if (ring.life <= 0) ring.mesh.visible = false;
+    }
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const piece = this.pieces[i]; piece.life -= motionDt;
       if (piece.life <= 0) { const last = this.pieces.length - 1; this.pieces[i] = this.pieces[last]; const color = new THREE.Color(); this.particles.getColorAt(last, color); this.particles.setColorAt(i, color); this.pieces.pop(); continue; }
-      piece.velocity.y -= (piece.paper ? 2.5 : 8) * motionDt; piece.position.addScaledVector(piece.velocity, motionDt);
-      if (piece.position.y < .1) { piece.position.y = .1; piece.velocity.y *= -.3; piece.velocity.x *= .8; piece.velocity.z *= .8; }
-      piece.rotation.x += motionDt * piece.spin; piece.rotation.z += motionDt * piece.spin * .6;
+      if (piece.paper) { piece.velocity.y -= 2.2 * motionDt; piece.velocity.multiplyScalar(1 - motionDt * 1.6); piece.velocity.x += Math.sin(this.clock * 6 + i) * motionDt * 2.5; }
+      else piece.velocity.y -= 16 * motionDt;
+      piece.position.addScaledVector(piece.velocity, motionDt);
+      const floor = Math.max(piece.dims.x, piece.dims.z) * .5 * (piece.paper ? .05 : .7) - .2;
+      if (piece.position.y < floor) {
+        piece.position.y = floor;
+        if (piece.paper || Math.abs(piece.velocity.y) < 1.2) { piece.velocity.y = 0; piece.spin.multiplyScalar(0); piece.velocity.x *= .85; piece.velocity.z *= .85; }
+        else { piece.velocity.y *= -.38; piece.velocity.x *= .6; piece.velocity.z *= .6; piece.spin.multiplyScalar(.45); }
+      }
+      piece.rotation.x += motionDt * piece.spin.x; piece.rotation.y += motionDt * piece.spin.y; piece.rotation.z += motionDt * piece.spin.z;
       this.dummy.position.copy(piece.position); this.dummy.rotation.copy(piece.rotation);
-      const scale = piece.size * Math.min(1, piece.life * 3); this.dummy.scale.set(scale, piece.paper ? scale * .08 : scale, scale); this.dummy.updateMatrix();
+      const fade = Math.min(1, piece.life * 2.5); this.dummy.scale.set(piece.dims.x * fade, piece.dims.y * fade, piece.dims.z * fade); this.dummy.updateMatrix();
       this.particles.setMatrixAt(i, this.dummy.matrix);
     }
     this.particles.count = this.pieces.length; this.particles.instanceMatrix.needsUpdate = true;

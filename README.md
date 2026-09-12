@@ -5,26 +5,32 @@
 **생일 선물로 시작하는, 45초짜리 3D 직장인 스트레스 해소 웹게임.**
 가상의 사무실에서 야근·회의·수정 요청을 부수고, 마지막에는 거대한 퇴사빔으로 건물을 종이 조각처럼 날린다.
 
-**현재 상태: MVP 구현 완료.** Vite + TypeScript + Three.js로 준비 → 플레이 → 퇴사빔 → 결과 카드까지 전체 흐름이 동작하며, Dockerfile(nginx 정적 서빙)로 Coolify에 배포한다.
+**현재 상태: 플레이 가능. https://sub.uxo.kr/boomcompany 에 배포 중.**
+Vite + TypeScript + Three.js 클라이언트와 의존성 없는 Node 서버(정적 파일 + 글로벌 랭킹 API)를 하나의 Docker 이미지로 묶어 Coolify에 배포한다.
+
+기획과 달라진 점: 첫 화면은 **닉네임 입력 → 시작**으로 단순화했고, 결과는 서버 랭킹(상위 10명)에 올라간다. 생일 모드·별명 카드·케이크는 타격감에 집중하기 위해 제거했다. 피날레는 옥상부터 기단까지 건물의 모든 부품이 실제 크기·색 그대로 조각나 날아간다. 아래 기획 본문은 최초 설계 기록으로 남겨 둔다.
 
 ```bash
-npm ci            # 의존성 설치
-npm run dev       # 개발 서버 (http://localhost:5173)
-npm test          # 점수·콤보·분노·종료 규칙 로직 테스트
-npm run build     # tsc 검사 → dist 빌드 → 오프라인 서비스 워커 생성
-node scripts/make-icons.mjs   # PWA 아이콘·소셜 미리보기 PNG 재생성 (Playwright Chromium 필요)
+npm ci                                  # 의존성 설치
+npm start                               # 랭킹 API + dist 서빙 (PORT=8787 DATA_DIR=.data 로 로컬 실행 권장)
+npm run dev                             # 개발 서버 http://localhost:5173/boomcompany/ (API는 8787로 프록시)
+npm test                                # 점수·콤보·분노·종료 규칙 + 랭킹 검증 로직 테스트
+npm run build                           # tsc 검사 → dist 빌드 → 오프라인 서비스 워커 생성
+node scripts/make-icons.mjs             # PWA 아이콘·소셜 미리보기 PNG 재생성 (Playwright Chromium 필요)
 ```
 
 | 경로 | 역할 |
 | --- | --- |
-| `src/game.ts` | 렌더러 없는 순수 게임 규칙 (`GameSession`) |
-| `src/scene.ts` | Three.js 3D 사무실·파편·퇴사빔·케이크/퇴근 도장 연출 |
-| `src/main.ts` | HTML HUD, 입력, 결과 카드 PNG, 공유, 설정 |
-| `src/audio.ts` | Web Audio 합성 효과음 |
+| `src/game.ts` | 렌더러 없는 순수 게임 규칙 |
+| `src/scene.ts` | Three.js 사무실, 부품 단위 파괴, 흔들림·히트스톱·섬광·충격파, 퇴사빔 붕괴 |
+| `src/audio.ts` | Web Audio 합성 효과음 (노이즈+저음 레이어, 콤보에 따라 피치 상승) |
+| `src/main.ts` | 첫 화면, HUD, 입력, 랭킹 표시·등록, 결과 카드 PNG, 공유 |
 | `src/pwa.ts` | 설치 안내, 서비스 워커 등록, localStorage 래퍼 |
-| `tests/game.test.ts` | 아래 "반드시 확인할 시나리오" 1~5번의 로직 검증 |
+| `server/index.mjs` | 정적 파일 + `/boomcompany/api/scores` (GET 상위 10, POST 등록). 점수는 `/data/scores.json` |
+| `server/scores.mjs` | 이름 정제, 점수 검증, 정렬·순위 계산 (테스트 대상) |
+| `tests/` | 게임 규칙과 랭킹 규칙 검증 |
 
-**제작 방향: 기술적으로 탄탄하고, 시각적으로 풍부한 플레이 가능한 3D 디오라마.** 층별 사무실, 반응하는 조명, 재질별 파편, 직접 만든 효과 셰이더와 피날레 카메라 연출을 첫 출시의 핵심으로 삼는다.
+배포: `Dockerfile` 한 개(빌드 스테이지 → node:22-alpine 런타임, 포트 80). Coolify 앱 FQDN은 `http://sub.uxo.kr/boomcompany`, 영구 볼륨 `/data`. 서버는 프록시가 `/boomcompany` 접두사를 벗기든 그대로 넘기든 모두 처리한다.
 
 ## 1. 기획의 중심
 
