@@ -36,3 +36,7 @@ h1{white-space:normal}
 .rules{width:min(100%,380px);margin-top:14px;font-size:12px;color:#aeb7a8}.rules summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;color:#8f9792;font-size:11px;letter-spacing:.5px}.rules summary::-webkit-details-marker{display:none}.rules summary::before{content:'+';color:var(--lime);font-weight:800}.rules[open] summary::before{content:'-'}.rules ul{margin:10px 0 0;padding:14px 16px;list-style:none;display:grid;gap:8px;background:#ffffff05;border:1px solid #ffffff08;border-radius:12px;line-height:1.6;text-align:left}.rules li b{color:#e8eddf}
 .result-stats{grid-template-columns:repeat(4,1fr)}.result-stats b{font-size:18px}
 @media(max-width:760px){.rules{text-align:left}.result-stats b{font-size:16px}.result-stats span{font-size:8px}}
+
+/* --- Company name entry + "OOO님이 회사 OOO을 부쉈습니다" ranking lines. --- */
+.enter #company-name{padding:12px 16px;font-size:14px;font-weight:500}
+.ranking-list .who{font-size:12px;font-weight:600;white-space:normal;line-height:1.35}.ranking-list .who small{margin-top:2px}

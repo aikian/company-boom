@@ -29,7 +29,7 @@ document.querySelector('#app')!.innerHTML = `
     <div class="eyebrow"><span></span> 15초 스트레스 해소</div>
     <h1>회사를<br><em>터뜨려라.</em><span class="title-star">✳</span></h1>
     <p class="lead">딱 15초. 부수고, 날리고, 퇴근.<br>오늘 쌓인 거, 여기서 다 털어요.</p>
-    <form class="enter" id="enter"><label class="visually-hidden" for="player-name">닉네임</label><input id="player-name" maxlength="12" placeholder="닉네임 입력 (랭킹에 올라가요)" autocomplete="nickname" enterkeyhint="go"><button id="start" class="primary start-button" type="submit" disabled><span id="start-label">사무실 준비 중…</span>${icon('arrow')}</button></form>
+    <form class="enter" id="enter"><label class="visually-hidden" for="player-name">닉네임</label><input id="player-name" maxlength="12" placeholder="닉네임 입력 (랭킹에 올라가요)" autocomplete="nickname" enterkeyhint="next"><label class="visually-hidden" for="company-name">부술 회사 이름 (선택)</label><input id="company-name" maxlength="16" placeholder="부술 회사 이름 (선택) · 기본: 주식회사 내일부터" autocomplete="organization" enterkeyhint="go"><button id="start" class="primary start-button" type="submit" disabled><span id="start-label">사무실 준비 중…</span>${icon('arrow')}</button></form>
     <div class="start-note"><span>가입 없이 바로</span><i>·</i><span>모바일 & PC</span><i>·</i><span>소리 켜고 하세요 🔊</span></div>
     <details class="rules"><summary>게임 규칙 보기</summary><ul>
       <li><b>15초</b> — 첫 타격부터 시작. 끝나면 건물이 무너져요. 쉬지 말고 두드리세요.</li>
@@ -55,7 +55,7 @@ document.querySelector('#app')!.innerHTML = `
   <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><span id="ranking-total"></span></div><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div></section>
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
-<dialog id="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">MAKE YOURSELF COMFORTABLE</div><h2>내 취향대로.</h2><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림과 파편 효과를 줄여요.</p><label class="setting-label">가상 회사 이름<input id="company-name" maxlength="16" value="주식회사 내일부터"></label><p class="muted">이름은 이 기기의 현재 화면에서만 사용해요.</p><button id="settings-save" class="primary">적용하기</button></dialog>
+<dialog id="settings-dialog"><button class="dialog-close icon-button" id="settings-close" aria-label="설정 닫기">${icon('close')}</button><div class="eyebrow">MAKE YOURSELF COMFORTABLE</div><h2>내 취향대로.</h2><label class="setting-row">움직임 줄이기 <input id="reduced" type="checkbox"></label><p class="muted">카메라 흔들림과 파편 효과를 줄여요.</p><button id="settings-save" class="primary">적용하기</button></dialog>
 <dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-beams">0</b><span>퇴사빔</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 `;
@@ -70,7 +70,13 @@ const notify = (text: string) => { $('toast').textContent = text; $('toast').hid
 const buzz = (pattern: number | number[]) => { try { navigator.vibrate?.(pattern); } catch { /* Optional haptics. */ } };
 const nameInput = $<HTMLInputElement>('player-name'); nameInput.value = readStore('boom-name', '');
 const playerName = () => nameInput.value.trim().slice(0, 12) || '익명의 직장인';
-const companyName = () => $<HTMLInputElement>('company-name').value.trim() || '주식회사 내일부터';
+const companyInput = $<HTMLInputElement>('company-name'); companyInput.value = readStore('boom-company', '');
+const companyName = () => companyInput.value.trim().slice(0, 16) || '주식회사 내일부터';
+// Korean object particle: 을 after a final consonant, 를 otherwise; non-Hangul endings get both.
+const eul = (word: string) => { const code = word.charCodeAt(word.length - 1); return code >= 0xac00 && code <= 0xd7a3 ? ((code - 0xac00) % 28 ? '을' : '를') : '을(를)'; };
+const smashed = (name: string, company: string) => `${name}님이 회사 ${company}${eul(company)} 부쉈습니다`;
+function applyCompany() { const company = companyName(); scene?.setName(company); $('scene-caption').querySelector('p')!.textContent = company; }
+companyInput.addEventListener('change', () => { writeStore('boom-company', companyInput.value.trim()); applyCompany(); });
 const anchors = Array.from({ length: 6 }, (_, i) => {
   const button = document.createElement('button'); button.className = 'target'; button.dataset.index = String(i);
   button.addEventListener('click', () => hit(i)); $('target-layer').append(button); return button;
@@ -80,11 +86,11 @@ soundUI(); $('best-score').textContent = best.toLocaleString();
 const reduced = $('reduced') as HTMLInputElement;
 reduced.checked = readStore('boom-reduced', String(matchMedia('(prefers-reduced-motion: reduce)').matches)) === 'true';
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-type Entry = { name: string; score: number; rank: string };
+type Entry = { name: string; score: number; rank: string; company?: string };
 function renderRanking(top: Entry[], total: number) {
   $('ranking-total').textContent = total ? `${total.toLocaleString()}명 참여` : '';
   $('ranking').innerHTML = top.length
-    ? top.map((entry, i) => `<li${entry.name === playerName() && entry.score === best ? ' class="mine"' : ''}><span class="place">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="who">${escape(entry.name)}<small>${escape(entry.rank)}</small></span><b>${entry.score.toLocaleString()}</b></li>`).join('')
+    ? top.map((entry, i) => `<li${entry.name === playerName() && entry.score === best ? ' class="mine"' : ''}><span class="place">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="who">${escape(smashed(entry.name, entry.company || '주식회사 내일부터'))}<small>${escape(entry.rank)}</small></span><b>${entry.score.toLocaleString()}</b></li>`).join('')
     : '<li class="ranking-empty">아직 아무도 없어요. 첫 번째 퇴사자가 되어 보세요!</li>';
 }
 async function loadRanking() {
@@ -131,7 +137,7 @@ function sync() {
 }
 function begin() {
   if (!scene) return;
-  writeStore('boom-name', nameInput.value.trim());
+  writeStore('boom-name', nameInput.value.trim()); writeStore('boom-company', companyInput.value.trim()); applyCompany();
   game.reset(); scene.reset(); game.start(); boomPlayed = false; rageReady = false; goldenShown = false; captured = ''; sound.unlock(); sync();
   $('quip').textContent = `사무용품을 터치하면 ${ROUND}초가 시작돼요.`;
   $('arena').scrollIntoView({ behavior: 'instant', block: 'start' });
@@ -153,14 +159,14 @@ $('settings').addEventListener('click', () => { game.pause(); sync(); settings.s
 $('settings-close').addEventListener('click', () => settings.close());
 $('settings-save').addEventListener('click', () => {
   writeStore('boom-reduced', String(reduced.checked)); document.body.classList.toggle('reduced-motion', reduced.checked);
-  if (scene) { scene.reduced = reduced.checked; scene.setName(companyName()); }
-  $('scene-caption').querySelector('p')!.textContent = companyName(); settings.close();
+  if (scene) scene.reduced = reduced.checked;
+  settings.close();
 });
 $('reload').addEventListener('click', () => location.reload());
 const result = $<HTMLDialogElement>('result-dialog');
 function showResult() {
   const isBest = game.score > best; best = Math.max(best, game.score); writeStore('boom-best', String(best));
-  $('result-greeting').textContent = `${playerName()}님, 오늘도 수고했어요. 이제 내 시간이에요.`;
+  $('result-greeting').textContent = `${smashed(playerName(), companyName())}.`;
   $('result-rank').textContent = game.rank; $('result-score').textContent = game.score.toLocaleString();
   $('result-destroyed').textContent = String(game.destroyed); $('result-combo').textContent = String(game.maxCombo); $('result-beams').textContent = String(game.beams); $('result-best').textContent = best.toLocaleString();
   $('new-record').hidden = !isBest; $('best-score').textContent = best.toLocaleString();
@@ -176,7 +182,7 @@ result.addEventListener('cancel', () => home());
 $('share').addEventListener('click', async () => {
   const url = new URL(import.meta.env.BASE_URL, location.origin).href;
   try {
-    if (navigator.share) await navigator.share({ title: '회사 터뜨리기', text: `${playerName()}은(는) 회사를 ${game.score.toLocaleString()}점만큼 터뜨렸어요. 이겨볼래?`, url });
+    if (navigator.share) await navigator.share({ title: '회사 터뜨리기', text: `${smashed(playerName(), companyName())}. ${game.score.toLocaleString()}점. 이겨볼래?`, url });
     else { await navigator.clipboard.writeText(url); notify('게임 링크를 복사했어요. 친구에게 보내주세요!'); }
   } catch (error) {
     if ((error as Error).name !== 'AbortError') { const input = document.createElement('input'); input.value = url; input.readOnly = true; input.className = 'copy-link'; $('result-dialog').append(input); input.select(); notify('아래 주소를 선택해 복사해 주세요.'); }
@@ -189,8 +195,8 @@ $('save-card').addEventListener('click', async () => {
     ctx.fillStyle = '#14171c'; ctx.fillRect(0, 0, 1080, 1350);
     ctx.fillStyle = '#d5fc71'; ctx.font = 'bold 25px sans-serif'; ctx.fillText('COMPANY BOOM  /  MISSION COMPLETE', 75, 105);
     ctx.fillStyle = '#f3f1e8'; ctx.font = '800 62px "Malgun Gothic", sans-serif'; ctx.fillText(game.rank, 75, 220, 930);
-    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`${playerName()}님의 오늘`, 75, 285, 930);
-    ctx.fillText(`오늘의 업적: ${companyName()} 철거 완료`, 75, 330, 930);
+    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`${smashed(playerName(), companyName())}.`, 75, 285, 930);
+    ctx.fillText('오늘도 수고했어요. 이제 내 시간이에요.', 75, 330, 930);
     if (captured) { const image = new Image(); image.src = captured; await image.decode(); const ratio = Math.min(1000 / image.width, 610 / image.height); const w = image.width * ratio; const h = image.height * ratio; ctx.drawImage(image, (1080 - w) / 2, 370, w, h); }
     else { ctx.fillStyle = '#d5fc71'; ctx.font = '220px sans-serif'; ctx.fillText('✳', 430, 680); }
     ctx.fillStyle = '#d5fc71'; ctx.font = '900 136px sans-serif'; ctx.fillText(game.score.toLocaleString(), 75, 1060);
@@ -210,6 +216,7 @@ sync(); void loadRanking();
 try {
   scene = new OfficeScene($('scene'), hit); scene.reduced = reduced.checked; document.body.classList.toggle('reduced-motion', reduced.checked);
   scene.onEvent = event => { if (event === 'crash') { sound.crash(); buzz(40); } };
+  applyCompany();
   $('loading').hidden = true; $<HTMLButtonElement>('start').disabled = false; $('start-label').textContent = '터뜨리러 가기';
   scene.renderer.domElement.addEventListener('webglcontextlost', event => { event.preventDefault(); game.pause(); sync(); notify('그래픽 연결이 끊겼어요. 복구를 기다려 주세요.'); });
   scene.renderer.domElement.addEventListener('webglcontextrestored', () => { location.reload(); });

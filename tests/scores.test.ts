@@ -29,5 +29,5 @@ test('insert keeps the list sorted, reports the position and caps the size', () 
   for (let i = 0; i < MAX_ENTRIES + 20; i++) list = insert(list, validate({ name: 'x', score: i })!).list;
   assert.equal(list.length, MAX_ENTRIES);
   assert.deepEqual(top(list, 2).map(e => e.score), [9000, 3000]);
-  assert.ok(!('company' in top(list, 1)[0]));
+  assert.equal(top(list, 1)[0].company, '');
 });
