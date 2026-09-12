@@ -14,6 +14,7 @@ const icon = (name: string) => {
     sound: '<path d="m11 5-6 4H2v6h3l6 4zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     install: '<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
     pause: '<path d="M8 5v14M16 5v14"/>',
+    chart: '<path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/>',
     trophy: '<path d="M7 3h10v7a5 5 0 0 1-10 0zM7 5H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4M12 15v5m-4 1h8"/>',
     close: '<path d="m6 6 12 12M6 18 18 6"/>',
     share: '<path d="M12 16V3m-5 5 5-5 5 5M5 13v8h14v-8"/>',
@@ -25,7 +26,7 @@ const icon = (name: string) => {
 document.querySelector('#app')!.innerHTML = `
 <header class="header">
   <a class="brand" href="${import.meta.env.BASE_URL}" aria-label="회사 터뜨리기 홈"><span class="brand-mark">${icon('bolt')}</span><span>회사 터뜨리기<small>COMPANY BOOM</small></span></a>
-  <div class="header-actions"><button id="install-open" class="subtle">${icon('install')}<span>앱 설치</span></button><button id="sound" class="icon-button" aria-label="소리 끄기" aria-pressed="true">${icon('sound')}</button><button id="settings" class="icon-button" aria-label="게임 설정">⚙</button></div>
+  <div class="header-actions"><button id="install-open" class="subtle">${icon('install')}<span>앱 설치</span></button><button id="stats-open" class="icon-button" aria-label="내 기록">${icon('chart')}</button><button id="sound" class="icon-button" aria-label="소리 끄기" aria-pressed="true">${icon('sound')}</button><button id="settings" class="icon-button" aria-label="게임 설정">⚙</button></div>
 </header>
 <main class="shell">
   <section class="intro" id="intro">
@@ -55,7 +56,7 @@ document.querySelector('#app')!.innerHTML = `
     <div id="pause-panel" class="pause-panel" hidden><span>Ⅱ</span><h2>잠깐 쉬어가요.</h2><p>스트레스도, 타이머도 멈췄어요.</p><button id="resume" class="primary">계속하기 ${icon('arrow')}</button><button id="quit" class="subtle">처음으로</button></div>
     <div id="scene-error" class="pause-panel" hidden><h2>3D 화면을 열 수 없어요.</h2><p>최신 Safari나 Chrome에서 다시 시도해 주세요.</p><button id="reload" class="primary">다시 불러오기</button></div>
   </section>
-  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div><button id="stats-open" class="subtle stats-button">📊 내 기록 보기</button></section>
+  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div></section>
   <footer class="plays" id="plays"><span>이번 달 플레이 <b id="plays-month">–</b>판</span><i>·</i><span>오늘 <b id="plays-today">–</b>판</span><i>·</i><span>누적 <b id="plays-total">–</b>판</span><small class="version">v${__APP_VERSION__}</small></footer>
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
