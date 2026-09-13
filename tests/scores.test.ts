@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, insert, page, top, validate, MAX_ENTRIES, PAGE_SIZE } from '../server/scores.mjs';
+import { cleanName, insert, page, top, validate, MAX_ENTRIES, MAX_SHOWN, PAGE_SIZE } from '../server/scores.mjs';
 
 test('names are trimmed, stripped of markup and capped at 12 characters', () => {
   assert.equal(cleanName('  동규 <b>🎂  '), '동규 b🎂');
@@ -46,4 +46,13 @@ test('page slices the board 20 at a time and clamps out-of-range pages', () => {
   assert.equal(page(list, -4).page, 1);
   assert.equal(page(list, NaN).page, 1);
   assert.deepEqual([page([], 1).pages, page([], 1).entries.length], [1, 0]);
+});
+
+test('the board stops at the top 100 even when more people played', () => {
+  let list: ReturnType<typeof validate>[] = [];
+  for (let i = 0; i < 130; i++) list = insert(list, validate({ name: `p${i}`, score: i })!).list;
+  assert.equal(MAX_SHOWN, 100);
+  const last = page(list, 5);
+  assert.deepEqual([last.pages, last.total, last.entries.length, last.entries.at(-1)!.score], [5, 130, 20, 30]);
+  assert.equal(page(list, 6).page, 5, 'page 6 does not exist');
 });

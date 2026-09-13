@@ -122,7 +122,7 @@ const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', 
 type Entry = { name: string; score: number; rank: string; company?: string };
 type Board = { top: Entry[]; total: number; today: Entry[]; todayTotal: number };
 type Page = { entries: Entry[]; page: number; pages: number; total: number };
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 20; const MAX_SHOWN = 100;
 let board: Board = { top: [], total: 0, today: [], todayTotal: 0 }; let tab: 'today' | 'all' = 'today';
 // Bulletin-board style paging: page 1 comes with the board itself, later pages are fetched on demand and cached per tab.
 const pageNo: Record<'today' | 'all', number> = { today: 1, all: 1 };
@@ -130,7 +130,7 @@ const pageCache = new Map<string, Page>();
 let pageRequest = 0;
 function firstPage(data: Board, which: 'today' | 'all'): Page {
   const total = which === 'today' ? data.todayTotal : data.total;
-  return { entries: which === 'today' ? data.today : data.top, page: 1, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)), total };
+  return { entries: which === 'today' ? data.today : data.top, page: 1, pages: Math.max(1, Math.ceil(Math.min(total, MAX_SHOWN) / PAGE_SIZE)), total };
 }
 function renderRanking(data: Board) {
   board = data; pageCache.clear(); pageNo.today = 1; pageNo.all = 1;
