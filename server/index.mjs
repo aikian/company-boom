@@ -4,7 +4,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { createGzip } from 'node:zlib';
-import { dayStart, insert, positionOf, since, top, validate } from './scores.mjs';
+import { dayStart, insert, page, positionOf, since, top, validate } from './scores.mjs';
 import { clampOffset, clampTime, createPush } from './push.mjs';
 import { createPlays } from './plays.mjs';
 
@@ -76,7 +76,13 @@ async function api(req, res, path) {
     return json(res, ok ? 200 : 404, { ok });
   }
   if (path !== 'scores') return json(res, 404, { error: 'not found' });
-  if (req.method === 'GET') { const today = since(scores, dayStart()); return json(res, 200, { top: top(scores, 10), total: scores.length, today: top(today, 10), todayTotal: today.length }); }
+  if (req.method === 'GET') {
+    const today = since(scores, dayStart());
+    // GET /api/scores?board=today|all&page=N pages through one board; the bare GET returns page 1 of both.
+    const query = new URL(req.url, 'http://localhost').searchParams;
+    if (query.has('page') || query.has('board')) return json(res, 200, { board: query.get('board') === 'all' ? 'all' : 'today', ...page(query.get('board') === 'all' ? scores : today, Number(query.get('page') || 1)) });
+    return json(res, 200, { top: top(scores), total: scores.length, today: top(today), todayTotal: today.length });
+  }
   if (req.method === 'DELETE') {
     // Admin reset: DELETE /api/scores with 'Authorization: Bearer <ADMIN_TOKEN>' (env). Disabled when no token is set.
     const token = process.env.ADMIN_TOKEN;
@@ -90,7 +96,7 @@ async function api(req, res, path) {
   if (!entry) return json(res, 400, { error: 'invalid score' });
   const result = insert(scores, entry); scores = result.list; await persist();
   const today = since(scores, dayStart());
-  return json(res, 201, { position: result.position, total: scores.length, top: top(scores, 10), todayPosition: positionOf(today, entry), todayTotal: today.length, today: top(today, 10) });
+  return json(res, 201, { position: result.position, total: scores.length, top: top(scores), todayPosition: positionOf(today, entry), todayTotal: today.length, today: top(today) });
 }
 
 function serve(req, res, path) {

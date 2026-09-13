@@ -67,3 +67,7 @@ h1{white-space:normal}
 @media(max-width:760px){.plays{margin:20px 0 0;padding:16px 0 30px;font-size:11px}.theme-grid{grid-template-columns:1fr 1fr}.stat-grid b{font-size:18px}}
 
 .eyebrow>#greeting{width:auto;height:auto;background:none;border-radius:0}
+/* --- Bulletin-board paging under the ranking list (20 per page). --- */
+.ranking-pager{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;max-width:380px;margin-top:10px}.ranking-pager button{min-width:28px;height:28px;padding:0 8px;border-radius:7px;background:#ffffff05;border:1px solid #ffffff0d;color:#9ba19e;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}.ranking-pager button:hover:not(:disabled){border-color:#ffffff22;color:#e6ebe3}.ranking-pager button.selected{background:#30362e;border-color:#d5fc7155;color:var(--lime)}.ranking-pager button:disabled{opacity:.3;cursor:default}.ranking-pager i{color:#5d665a;font-size:11px;padding:0 2px;font-style:normal}
+.ranking-list.loading{opacity:.45;pointer-events:none;transition:opacity .15s}
+@media(max-width:760px){.ranking-pager{max-width:none}}

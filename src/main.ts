@@ -56,7 +56,7 @@ document.querySelector('#app')!.innerHTML = `
     <div id="pause-panel" class="pause-panel" hidden><span>Ⅱ</span><h2>잠깐 쉬어가요.</h2><p>스트레스도, 타이머도 멈췄어요.</p><button id="resume" class="primary">계속하기 ${icon('arrow')}</button><button id="quit" class="subtle">처음으로</button></div>
     <div id="scene-error" class="pause-panel" hidden><h2>3D 화면을 열 수 없어요.</h2><p>최신 Safari나 Chrome에서 다시 시도해 주세요.</p><button id="reload" class="primary">다시 불러오기</button></div>
   </section>
-  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div></section>
+  <section class="ranking" id="ranking-panel" aria-label="랭킹"><div class="ranking-head"><h2>${icon('trophy')} 실시간 랭킹</h2><div class="ranking-tabs" role="tablist"><button id="tab-today" class="selected" role="tab" aria-selected="true">오늘</button><button id="tab-all" role="tab" aria-selected="false">전체</button></div></div><span id="ranking-total" class="ranking-total"></span><ol id="ranking" class="ranking-list"><li class="ranking-empty">랭킹을 불러오는 중…</li></ol><nav id="ranking-pager" class="ranking-pager" aria-label="랭킹 페이지" hidden></nav><div class="record">내 최고 기록 <strong id="best-score">0</strong><small>PT</small></div><div class="streak" id="streak" hidden></div></section>
   <footer class="plays" id="plays"><span>이번 달 플레이 <b id="plays-month">–</b>판</span><i>·</i><span>오늘 <b id="plays-today">–</b>판</span><i>·</i><span>누적 <b id="plays-total">–</b>판</span><small class="version">v${__APP_VERSION__}</small></footer>
 </main>
 <dialog id="install-dialog" class="install-dialog"><button id="install-close" class="dialog-close icon-button" aria-label="설치 안내 닫기">${icon('close')}</button><div class="app-icon">${icon('bolt')}</div><div class="eyebrow">YOUR POCKET-SIZED ESCAPE</div><h2>퇴근 버튼을<br>홈 화면에.</h2><p class="dialog-description">앱으로 설치하면 더 빠르고, 더 몰입감 있게.<br>한 번 준비하면 오프라인에서도 즐길 수 있어요.</p><div id="install-help" class="install-help"></div><button id="install-action" class="primary" hidden>${icon('install')} 앱 설치하기</button><button id="install-later" class="later-button">지금은 웹으로 플레이</button><small class="install-free">무료 · 회원가입 없음 · 앱스토어 없이 설치</small></dialog>
@@ -121,18 +121,58 @@ reduced.checked = readStore('boom-reduced', String(matchMedia('(prefers-reduced-
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 type Entry = { name: string; score: number; rank: string; company?: string };
 type Board = { top: Entry[]; total: number; today: Entry[]; todayTotal: number };
+type Page = { entries: Entry[]; page: number; pages: number; total: number };
+const PAGE_SIZE = 20;
 let board: Board = { top: [], total: 0, today: [], todayTotal: 0 }; let tab: 'today' | 'all' = 'today';
+// Bulletin-board style paging: page 1 comes with the board itself, later pages are fetched on demand and cached per tab.
+const pageNo: Record<'today' | 'all', number> = { today: 1, all: 1 };
+const pageCache = new Map<string, Page>();
+let pageRequest = 0;
+function firstPage(data: Board, which: 'today' | 'all'): Page {
+  const total = which === 'today' ? data.todayTotal : data.total;
+  return { entries: which === 'today' ? data.today : data.top, page: 1, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)), total };
+}
 function renderRanking(data: Board) {
-  board = data; const top = tab === 'today' ? data.today : data.top; const total = tab === 'today' ? data.todayTotal : data.total;
+  board = data; pageCache.clear(); pageNo.today = 1; pageNo.all = 1;
+  renderPage(firstPage(data, tab));
+}
+function renderPage(current: Page) {
+  const total = current.total; const offset = (current.page - 1) * PAGE_SIZE;
   $('tab-today').classList.toggle('selected', tab === 'today'); $('tab-all').classList.toggle('selected', tab === 'all');
   $('tab-today').setAttribute('aria-selected', String(tab === 'today')); $('tab-all').setAttribute('aria-selected', String(tab === 'all'));
   $('ranking-total').textContent = total ? `${tab === 'today' ? '오늘' : '전체'} ${total.toLocaleString()}명 참여` : '';
-  $('ranking').innerHTML = top.length
-    ? top.map((entry, i) => `<li${entry.name === playerName() && entry.score === best ? ' class="mine"' : ''}><span class="place">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="who">${escape(smashed(entry.name, entry.company || '주식회사 내일부터'))}<small>${escape(entry.rank)}</small></span><b>${entry.score.toLocaleString()}</b></li>`).join('')
+  $('ranking').innerHTML = current.entries.length
+    ? current.entries.map((entry, i) => `<li${entry.name === playerName() && entry.score === best ? ' class="mine"' : ''}><span class="place">${['🥇', '🥈', '🥉'][offset + i] || offset + i + 1}</span><span class="who">${escape(smashed(entry.name, entry.company || '주식회사 내일부터'))}<small>${escape(entry.rank)}</small></span><b>${entry.score.toLocaleString()}</b></li>`).join('')
     : `<li class="ranking-empty">${tab === 'today' ? '오늘 아직 아무도 안 부쉈어요. 첫 퇴사자가 되어 보세요!' : '아직 아무도 없어요. 첫 번째 퇴사자가 되어 보세요!'}</li>`;
+  renderPager(current);
 }
-$('tab-today').addEventListener('click', () => { tab = 'today'; renderRanking(board); });
-$('tab-all').addEventListener('click', () => { tab = 'all'; renderRanking(board); });
+function renderPager({ page, pages }: Page) {
+  const pager = $('ranking-pager'); pager.hidden = pages <= 1; if (pages <= 1) return;
+  const from = Math.max(1, Math.min(page - 2, pages - 4)); const to = Math.min(pages, from + 4);
+  const numbers = Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  pager.innerHTML = `<button data-page="${page - 1}"${page <= 1 ? ' disabled' : ''} aria-label="이전 페이지">‹</button>`
+    + (from > 1 ? `<button data-page="1">1</button>${from > 2 ? '<i>…</i>' : ''}` : '')
+    + numbers.map(n => `<button data-page="${n}"${n === page ? ' class="selected" aria-current="page"' : ''}>${n}</button>`).join('')
+    + (to < pages ? `${to < pages - 1 ? '<i>…</i>' : ''}<button data-page="${pages}">${pages}</button>` : '')
+    + `<button data-page="${page + 1}"${page >= pages ? ' disabled' : ''} aria-label="다음 페이지">›</button>`;
+}
+async function showPage(number: number) {
+  pageNo[tab] = number; const key = `${tab}:${number}`;
+  if (number === 1) return renderPage(firstPage(board, tab));
+  const cached = pageCache.get(key); if (cached) return renderPage(cached);
+  const request = ++pageRequest; $('ranking').classList.add('loading');
+  try {
+    const data = (await (await fetch(`${API}scores?board=${tab}&page=${number}`, { cache: 'no-store' })).json()) as Page;
+    pageCache.set(key, data); if (request === pageRequest) { pageNo[tab] = data.page; renderPage(data); }
+  } catch { if (request === pageRequest) notify('랭킹 페이지를 불러올 수 없어요.'); }
+  finally { $('ranking').classList.remove('loading'); }
+}
+$('tab-today').addEventListener('click', () => { tab = 'today'; void showPage(pageNo.today); });
+$('tab-all').addEventListener('click', () => { tab = 'all'; void showPage(pageNo.all); });
+$('ranking-pager').addEventListener('click', event => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-page]'); if (!button || button.disabled) return;
+  void showPage(Number(button.dataset.page)); $('ranking-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 // Daily streak: one stamp per local calendar day you played.
 const today = () => new Date().toLocaleDateString('sv-SE');
 function computeStreak() {

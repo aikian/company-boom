@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, insert, top, validate, MAX_ENTRIES } from '../server/scores.mjs';
+import { cleanName, insert, page, top, validate, MAX_ENTRIES, PAGE_SIZE } from '../server/scores.mjs';
 
 test('names are trimmed, stripped of markup and capped at 12 characters', () => {
   assert.equal(cleanName('  동규 <b>🎂  '), '동규 b🎂');
@@ -30,4 +30,20 @@ test('insert keeps the list sorted, reports the position and caps the size', () 
   assert.equal(list.length, MAX_ENTRIES);
   assert.deepEqual(top(list, 2).map(e => e.score), [9000, 3000]);
   assert.equal(top(list, 1)[0].company, '');
+});
+
+test('page slices the board 20 at a time and clamps out-of-range pages', () => {
+  let list: ReturnType<typeof validate>[] = [];
+  for (let i = 0; i < 45; i++) list = insert(list, validate({ name: `p${i}`, score: i * 10 })!).list;
+  assert.equal(PAGE_SIZE, 20);
+  assert.equal(top(list).length, 20, 'top defaults to one page');
+  const first = page(list, 1);
+  assert.deepEqual([first.page, first.pages, first.total, first.entries.length], [1, 3, 45, 20]);
+  assert.equal(first.entries[0].score, 440);
+  const last = page(list, 3);
+  assert.deepEqual([last.entries.length, last.entries[0].score], [5, 40]);
+  assert.equal(page(list, 99).page, 3, 'too-large page clamps to the last page');
+  assert.equal(page(list, -4).page, 1);
+  assert.equal(page(list, NaN).page, 1);
+  assert.deepEqual([page([], 1).pages, page([], 1).entries.length], [1, 0]);
 });
