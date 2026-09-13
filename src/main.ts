@@ -18,6 +18,8 @@ const icon = (name: string) => {
     trophy: '<path d="M7 3h10v7a5 5 0 0 1-10 0zM7 5H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4M12 15v5m-4 1h8"/>',
     close: '<path d="m6 6 12 12M6 18 18 6"/>',
     share: '<path d="M12 16V3m-5 5 5-5 5 5M5 13v8h14v-8"/>',
+    instagram: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r=".6" fill="currentColor"/>',
+    kakao: '<path d="M12 4C7 4 3 7.2 3 11.1c0 2.5 1.7 4.7 4.2 6L6.4 21l4.3-2.9c.4 0 .9.1 1.3.1 5 0 9-3.2 9-7.1S17 4 12 4z" fill="currentColor" stroke="none"/>',
     refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/>',
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.bolt}</svg>`;
@@ -70,7 +72,7 @@ document.querySelector('#app')!.innerHTML = `
   <section class="setting-group setting-foot"><button id="check-update" class="subtle">업데이트 확인</button><small class="version">v${__APP_VERSION__}</small></section>
   <button id="settings-save" class="primary">닫기</button></dialog>
 <dialog id="stats-dialog" class="stats-dialog"><button class="dialog-close icon-button" id="stats-close" aria-label="기록 닫기">${icon('close')}</button><div class="eyebrow">MY RECORD</div><h2 id="stats-title">내 기록</h2><div id="stats-body"></div><button id="stats-done" class="primary">닫기</button></dialog>
-<dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-beams">0</b><span>퇴사빔</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
+<dialog id="result-dialog" class="result-dialog"><div class="eyebrow">MISSION COMPLETE</div><div class="result-emblem">✳</div><p id="result-greeting">오늘도 수고했어요.</p><h2 id="result-rank"></h2><div class="result-score"><strong id="result-score">0</strong><span>POINTS</span></div><p id="result-position" class="result-position"></p><div class="result-stats"><div><b id="result-destroyed">0</b><span>부순 스트레스</span></div><div><b id="result-combo">0</b><span>최대 콤보</span></div><div><b id="result-beams">0</b><span>퇴사빔</span></div><div><b id="result-best">0</b><span>최고 기록</span></div></div><p id="new-record" class="new-record" hidden>NEW BEST · 오늘의 나를 뛰어넘었어요!</p><button id="replay" class="primary">${icon('refresh')} 한 번 더 터뜨리기</button><div class="result-share"><button id="share-story" class="share-insta">${icon('instagram')} 인스타 스토리</button><button id="share-kakao" class="share-kakao">${icon('kakao')} 카톡으로 공유</button></div><div class="result-actions"><button id="save-card" class="subtle">${icon('install')} 카드 저장</button><button id="share" class="subtle">${icon('share')} 링크 공유</button></div><button id="result-home" class="later-button">처음으로</button></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 `;
 
@@ -358,36 +360,101 @@ function showResult() {
 $('replay').addEventListener('click', () => { result.close(); begin(); });
 $('result-home').addEventListener('click', () => { result.close(); home(); });
 result.addEventListener('cancel', () => home());
+// --- Sharing: the link always rides along. Instagram gets a 9:16 story card with the address printed on it (and copied for
+// the link sticker), KakaoTalk gets text + link so the OG preview renders, the card buttons fall back to download + copy. ---
+const shareUrl = () => new URL(import.meta.env.BASE_URL, location.origin).href;
+const shareLine = () => `${smashed(playerName(), companyName())}. ${game.score.toLocaleString()}점 · ${game.rank}. 이겨볼래?`;
+const shortUrl = () => location.host + import.meta.env.BASE_URL.replace(/\/$/, '');
+async function copyText(text: string) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } }
+function showCopyBox(text: string) {
+  let input = result.querySelector<HTMLInputElement>('.copy-link');
+  if (!input) { input = document.createElement('input'); input.readOnly = true; input.className = 'copy-link'; result.append(input); }
+  input.value = text; input.select();
+}
 $('share').addEventListener('click', async () => {
-  const url = new URL(import.meta.env.BASE_URL, location.origin).href;
+  const url = shareUrl();
   try {
-    if (navigator.share) await navigator.share({ title: '회사 터뜨리기', text: `${smashed(playerName(), companyName())}. ${game.score.toLocaleString()}점. 이겨볼래?`, url });
-    else { await navigator.clipboard.writeText(url); notify('게임 링크를 복사했어요. 친구에게 보내주세요!'); }
-  } catch (error) {
-    if ((error as Error).name !== 'AbortError') { const input = document.createElement('input'); input.value = url; input.readOnly = true; input.className = 'copy-link'; $('result-dialog').append(input); input.select(); notify('아래 주소를 선택해 복사해 주세요.'); }
+    if (navigator.share) await navigator.share({ title: '회사 터뜨리기', text: shareLine(), url });
+    else if (await copyText(`${shareLine()}\n${url}`)) notify('게임 링크를 복사했어요. 친구에게 보내주세요!');
+    else { showCopyBox(url); notify('아래 주소를 선택해 복사해 주세요.'); }
+  } catch (error) { if ((error as Error).name !== 'AbortError') { showCopyBox(url); notify('아래 주소를 선택해 복사해 주세요.'); } }
+});
+
+// One result card in two shapes: 4:5 for saving/feeds and 9:16 for stories (with room left for Instagram's own UI).
+async function renderCard(kind: 'post' | 'story') {
+  const width = 1080; const height = kind === 'story' ? 1920 : 1350; const top = kind === 'story' ? 300 : 0;
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#14171c'; ctx.fillRect(0, 0, width, height);
+  if (kind === 'story') { const glow = ctx.createRadialGradient(540, 960, 0, 540, 960, 900); glow.addColorStop(0, '#d5fc7114'); glow.addColorStop(1, '#14171c00'); ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height); }
+  ctx.fillStyle = '#d5fc71'; ctx.font = 'bold 25px sans-serif'; ctx.fillText('COMPANY BOOM  /  MISSION COMPLETE', 75, top + 105);
+  ctx.fillStyle = '#f3f1e8'; ctx.font = '800 62px "Malgun Gothic", sans-serif'; ctx.fillText(game.rank, 75, top + 220, 930);
+  ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`${smashed(playerName(), companyName())}.`, 75, top + 285, 930);
+  ctx.fillText('오늘도 수고했어요. 이제 내 시간이에요.', 75, top + 330, 930);
+  if (captured) { const image = new Image(); image.src = captured; await image.decode(); const ratio = Math.min(1000 / image.width, 610 / image.height); const w = image.width * ratio; const h = image.height * ratio; ctx.drawImage(image, (width - w) / 2, top + 370, w, h); }
+  else { ctx.fillStyle = '#d5fc71'; ctx.font = '220px sans-serif'; ctx.fillText('✳', 430, top + 680); }
+  ctx.fillStyle = '#d5fc71'; ctx.font = '900 136px sans-serif'; ctx.fillText(game.score.toLocaleString(), 75, top + 1060);
+  ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`부순 스트레스 ${game.destroyed}  ·  최대 콤보 ${game.maxCombo}  ·  퇴사빔 ${game.beams}회`, 80, top + 1130);
+  ctx.fillStyle = '#f3f1e8'; ctx.font = 'bold 32px "Malgun Gothic", sans-serif'; ctx.fillText(kind === 'story' ? '너도 회사 터뜨리러 와. 15초면 돼.' : '오늘의 스트레스, 여기서 끝.', 75, top + 1260);
+  if (kind === 'story') {
+    // Big, legible address: Instagram strips links from shared images, so people type it or paste it into a link sticker.
+    ctx.fillStyle = '#d5fc71'; ctx.fillRect(75, top + 1290, 930, 88);
+    ctx.fillStyle = '#14171c'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(shortUrl(), 540, top + 1348); ctx.textAlign = 'start';
+  } else { ctx.font = '20px sans-serif'; ctx.fillText(shortUrl(), 75, top + 1304); }
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Image encoding failed')), 'image/png'));
+  return new File([blob], kind === 'story' ? 'company-boom-story.png' : 'company-boom.png', { type: 'image/png' });
+}
+function download(file: File) { const link = document.createElement('a'); link.href = URL.createObjectURL(file); link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 10000); }
+const canShareFiles = (file: File) => typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] });
+const mobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+async function withButton(id: string, work: () => Promise<void>, failure: string) {
+  const button = $<HTMLButtonElement>(id); if (button.disabled) return; button.disabled = true;
+  try { await work(); } catch (error) { if ((error as Error).name !== 'AbortError') notify(failure); } finally { button.disabled = false; }
+}
+$('save-card').addEventListener('click', () => withButton('save-card', async () => {
+  const file = await renderCard('post');
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent) && canShareFiles(file)) await navigator.share({ files: [file], text: shareLine(), url: shareUrl() });
+  else { download(file); notify('결과 카드를 저장했어요!'); }
+}, '카드 저장이 어려워요. 화면 캡처 또는 링크 공유를 이용해 주세요.'));
+
+$('share-story').addEventListener('click', () => withButton('share-story', async () => {
+  const file = await renderCard('story'); const copied = await copyText(shareUrl());
+  if (mobile() && canShareFiles(file)) {
+    // The share sheet lists Instagram → 스토리. The link is on the image and on the clipboard for a link sticker.
+    await navigator.share({ files: [file], text: `${shareLine()} ${shareUrl()}` });
+    notify(copied ? '인스타에서 스토리에 올리고, 링크 스티커에 복사된 주소를 붙여넣어 보세요!' : '인스타에서 스토리에 올려주세요. 링크는 카드에 적혀 있어요.');
+  } else {
+    download(file);
+    notify(copied ? '스토리용 카드를 저장했어요. 인스타 앱에서 올리고, 복사된 링크를 스티커로 붙여 주세요.' : '스토리용 카드를 저장했어요. 인스타 앱에서 스토리로 올려 주세요.');
   }
-});
-$('save-card').addEventListener('click', async () => {
-  const button = $<HTMLButtonElement>('save-card'); button.disabled = true;
-  try {
-    const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1350; const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#14171c'; ctx.fillRect(0, 0, 1080, 1350);
-    ctx.fillStyle = '#d5fc71'; ctx.font = 'bold 25px sans-serif'; ctx.fillText('COMPANY BOOM  /  MISSION COMPLETE', 75, 105);
-    ctx.fillStyle = '#f3f1e8'; ctx.font = '800 62px "Malgun Gothic", sans-serif'; ctx.fillText(game.rank, 75, 220, 930);
-    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`${smashed(playerName(), companyName())}.`, 75, 285, 930);
-    ctx.fillText('오늘도 수고했어요. 이제 내 시간이에요.', 75, 330, 930);
-    if (captured) { const image = new Image(); image.src = captured; await image.decode(); const ratio = Math.min(1000 / image.width, 610 / image.height); const w = image.width * ratio; const h = image.height * ratio; ctx.drawImage(image, (1080 - w) / 2, 370, w, h); }
-    else { ctx.fillStyle = '#d5fc71'; ctx.font = '220px sans-serif'; ctx.fillText('✳', 430, 680); }
-    ctx.fillStyle = '#d5fc71'; ctx.font = '900 136px sans-serif'; ctx.fillText(game.score.toLocaleString(), 75, 1060);
-    ctx.fillStyle = '#a8aaa4'; ctx.font = '28px "Malgun Gothic", sans-serif'; ctx.fillText(`부순 스트레스 ${game.destroyed}  ·  최대 콤보 ${game.maxCombo}  ·  퇴사빔 ${game.beams}회`, 80, 1130);
-    ctx.fillStyle = '#f3f1e8'; ctx.font = 'bold 32px "Malgun Gothic", sans-serif'; ctx.fillText('오늘의 스트레스, 여기서 끝.', 75, 1260); ctx.font = '20px sans-serif'; ctx.fillText(location.host + import.meta.env.BASE_URL, 75, 1304);
-    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('Image encoding failed')), 'image/png'));
-    const file = new File([blob], 'company-boom.png', { type: 'image/png' });
-    if (/iPhone|iPad|iPod/.test(navigator.userAgent) && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] });
-    else { const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'company-boom.png'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 10000); notify('결과 카드를 저장했어요!'); }
-  } catch (error) { if ((error as Error).name !== 'AbortError') notify('카드 저장이 어려워요. 화면 캡처 또는 링크 공유를 이용해 주세요.'); }
-  finally { button.disabled = false; }
-});
+}, '스토리 카드를 만들지 못했어요. 카드 저장을 이용해 주세요.'));
+
+// KakaoTalk: prefer the official SDK when a JS key is configured; otherwise the share sheet (mobile) or clipboard (desktop).
+const KAKAO_KEY = import.meta.env.VITE_KAKAO_JS_KEY as string | undefined;
+let kakaoReady: Promise<boolean> | undefined;
+function loadKakao() {
+  kakaoReady ??= new Promise<boolean>(resolve => {
+    if (!KAKAO_KEY) return resolve(false);
+    const script = document.createElement('script'); script.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js'; script.crossOrigin = 'anonymous';
+    script.onload = () => { try { const Kakao = (window as any).Kakao; if (!Kakao.isInitialized()) Kakao.init(KAKAO_KEY); resolve(true); } catch { resolve(false); } };
+    script.onerror = () => resolve(false); document.head.append(script);
+  });
+  return kakaoReady;
+}
+$('share-kakao').addEventListener('click', () => withButton('share-kakao', async () => {
+  const url = shareUrl(); const text = shareLine();
+  if (await loadKakao()) {
+    (window as any).Kakao.Share.sendDefault({
+      objectType: 'feed',
+      content: { title: `${smashed(playerName(), companyName())}`, description: `${game.score.toLocaleString()}점 · ${game.rank}. 15초 안에 이겨볼래?`, imageUrl: new URL('social.png', url).href, link: { mobileWebUrl: url, webUrl: url } },
+      buttons: [{ title: '나도 터뜨리기', link: { mobileWebUrl: url, webUrl: url } }],
+    });
+    return;
+  }
+  if (mobile() && navigator.share) { await navigator.share({ title: '회사 터뜨리기', text, url }); return; }
+  if (await copyText(`${text}\n${url}`)) notify('문구와 링크를 복사했어요. 카톡 대화창에 붙여넣기 하세요!');
+  else { showCopyBox(`${text} ${url}`); notify('아래 내용을 복사해서 카톡에 붙여넣어 주세요.'); }
+}, '카톡 공유가 어려워요. 링크 공유를 이용해 주세요.'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) { game.pause(); sync(); void sound.context?.suspend(); } lastTime = performance.now(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && game.phase === 'playing') { game.pause(); sync(); } });
 setupPwa(notify, apply => { pendingUpdate = apply; applyUpdate(); });
